@@ -98,22 +98,26 @@ def save_jobs():
     existing_job_ids = [job['JobId'] for job in job_c.find_documents()]
     for job_id, job_class in JobBase._registry.items():
         job_name = str(job_class.__name__)
-        job_dict = Job(
-            JobId=job_id,
-            JobName=job_name,
-            JobClass=str(job_class.__module__),
-            Package=BASE_PACKAGE,
-            Description=f'This is {job_name}',
-            Disabled=1,
-            Minute="",
-            Hour="",
-            DayOfWeek="",
-            DayOfMonth="",
-            MonthOfYear="",
-            Status=1
-        ).dict()
-        if job_id not in existing_job_ids:
-            job_c.save_dict_to_collection(job_dict)
+        try:
+            job_dict = Job(
+                JobId=job_id,
+                JobName=job_name,
+                JobClass=str(job_class.__module__),
+                Package=BASE_PACKAGE,
+                Description=f'This is {job_name}',
+                Disabled=1,
+                Minute="",
+                Hour="",
+                DayOfWeek="",
+                DayOfMonth="",
+                MonthOfYear="",
+                Status=1
+            ).dict()
+            if job_id not in existing_job_ids:
+                job_c.save_dict_to_collection(job_dict)
+        except Exception as e:
+            print(f"[AutoImport] Failed to save job {job_id}: {e}")
+            traceback.print_exc()
 
 
 auto_import_jobs()

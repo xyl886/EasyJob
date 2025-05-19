@@ -3,6 +3,18 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/backend" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Builtin/2025-05-15" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Capterra/2025-05-15" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Hotpads/2025-05-17" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Jjwxc/2025-04-21" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Jjwxc/2025-04-22" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Jjwxc/2025-04-25" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Jjwxc/2025-04-27" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Jjwxc/2025-04-30" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Qxyw/2025-05-19" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Sephora/2025-05-05" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Sephora/2025-05-06" />
+      <excludeFolder url="file://$MODULE_DIR$/Job/Zillow/2025-05-17" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.12" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
