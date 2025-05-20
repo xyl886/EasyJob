@@ -7,13 +7,16 @@
 """
 import threading
 from contextlib import asynccontextmanager
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 from fastapi import FastAPI
+from fastapi import Query
 from starlette.middleware.cors import CORSMiddleware
-from Core import auto_import_jobs, MODULE_PATTERN, BASE_PACKAGE
+from typing import Dict
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
+from Core import auto_import_jobs, MODULE_PATTERN, BASE_PACKAGE
+from Core.Collection import PageInt, JobIdInt, PageSizeInt
 from Core.Result import *
 from Core.Scheduler import JobScheduler
 from Core.Service import *
@@ -75,17 +78,63 @@ async def add_job(job: Job):
         return ErrorResult(message=str(e))
 
 
-@app.get("/jobs/", response_model=Result[List[Job]])
-async def list_jobs():
+@app.get("/jobs/", response_model=Result[Dict])
+async def list_jobs(
+        current_page: PageInt = Query(1, description="当前页码，从1开始"),
+        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100),
+        job_name: Optional[str] = Query(None, description="任务名称模糊查询", max_length=50),
+        status: Optional[int] = Query(None, description="任务状态(1-禁用,0-启用)", ge=0, le=1)
+):
+    """
+    获取任务列表
+    - current_page: 当前页码(从1开始)
+    - page_size: 每页数量(1-100)
+    - job_name: 任务名称模糊查询(可选)
+    - status: 任务状态筛选(可选,0-禁用,1-启用)
+    
+    返回格式:
+    {
+        "items": [],  # 任务列表
+        "total": 0,   # 总记录数
+        "page": 1,    # 当前页码
+        "page_size": 10,  # 每页数量
+        "page_count": 1  # 总页数
+    }
+    """
     try:
-        jobs = await get_all_jobs()
-        return SuccessResult(data=jobs)
+        # 添加查询参数过滤
+        filters = {}
+        if job_name:
+            filters["job_name"] = {"$regex": job_name}
+        if status is not None:
+            filters["Disabled"] = status
+
+        # 获取总数
+        total = await get_jobs_count(filters)
+        # 计算总页数
+        page_count = (total + page_size - 1) // page_size
+        # 获取分页数据
+        items = await get_jobs(current_page, page_size, filters)
+
+        # 构建返回数据
+        result = {
+            "items": items,
+            "total": total,
+            "page": current_page,
+            "page_size": page_size,
+            "page_count": page_count
+        }
+
+        return SuccessResult(data=result)
+    except ValueError as e:
+        return ErrorResult(message=f"参数错误: {str(e)}", code=400)
     except Exception as e:
-        return ErrorResult(message=str(e))
+        logger.error(f"获取任务列表失败: {str(e)}", exc_info=True)
+        return ErrorResult(message="服务器内部错误", code=500)
 
 
 @app.get("/jobs/{job_id}", response_model=Result[Job])
-async def get_job_detail(job_id: int):
+async def get_job_detail(job_id: JobIdInt):
     try:
         job = await get_job(job_id)
         if not job:
@@ -98,7 +147,7 @@ async def get_job_detail(job_id: int):
 
 
 @app.put("/jobs/{job_id}", response_model=Result[Job])
-async def update_job_detail(job_id: int, job: Job):
+async def update_job_detail(job_id: JobIdInt, job: Job):
     try:
         if job_id != job.JobId:
             raise HTTPException(status_code=400, detail="Job ID mismatch")
@@ -111,7 +160,7 @@ async def update_job_detail(job_id: int, job: Job):
 
 
 @app.delete("/jobs/{job_id}", response_model=Result)
-async def remove_job(job_id: int):
+async def remove_job(job_id: JobIdInt):
     try:
         if not await delete_job(job_id):
             raise HTTPException(status_code=404, detail="Job not found")
@@ -123,7 +172,7 @@ async def remove_job(job_id: int):
 
 
 @app.post("/jobs/{job_id}/run", response_model=Result)
-async def trigger_job(job_id: int):
+async def trigger_job(job_id: JobIdInt):
     try:
         job = await get_job(job_id)
         if not job:
@@ -138,15 +187,85 @@ async def trigger_job(job_id: int):
         return ErrorResult(message=str(e))
 
 
-@app.get("/jobs/{job_id}/history", response_model=Result[List[History]])
-async def get_job_history(job_id: int, limit: int = 10):
+@app.get("/history", response_model=Result[Dict])
+async def get_history(
+        current_page: PageInt = Query(1, description="当前页码，从1开始"),
+        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100)
+):
+    """
+    获取任务执行历史记录
+    - current_page: 当前页码(从1开始)
+    - page_size: 每页数量(1-100)
+
+    返回格式:
+    {
+        "items": [],  # 历史记录列表
+        "total": 0,   # 总记录数
+        "page": 1,    # 当前页码
+        "page_size": 10,  # 每页数量
+        "page_count": 1  # 总页数
+    }
+    """
     try:
-        histories = await get_job_logs(job_id, limit)
-        return SuccessResult(data=histories)
+        total = await get_job_logs_count()
+        page_count = (total + page_size - 1) // page_size
+        items = await get_job_logs(current_page=current_page, page_size=page_size)
+        result = {
+            "items": items,
+            "total": total,
+            "page": current_page,
+            "page_size": page_size,
+            "page_count": page_count
+        }
+        return SuccessResult(data=result)
+    except ValueError as e:
+        return ErrorResult(message=f"参数错误: {str(e)}", code=400)
     except Exception as e:
-        return ErrorResult(message=str(e))
+        logger.error(f"获取任务历史失败: {str(e)}", exc_info=True)
+        return ErrorResult(message="服务器内部错误", code=500)
 
 
+@app.get("/jobs/{job_id}/history", response_model=Result[Dict])
+async def get_job_history(
+        job_id: Optional[JobIdInt] = None,  # 可选参数
+        current_page: PageInt = Query(1, description="当前页码，从1开始"),
+        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100)
+):
+    """
+    获取任务执行历史记录
+    - job_id: 任务ID(正整数)
+    - current_page: 当前页码(从1开始)
+    - page_size: 每页数量(1-100)
+
+    返回格式:
+    {
+        "items": [],  # 历史记录列表
+        "total": 0,   # 总记录数
+        "page": 1,    # 当前页码
+        "page_size": 10,  # 每页数量
+        "page_count": 1  # 总页数
+    }
+    """
+    try:
+        total = await get_job_logs_count(job_id)
+        page_count = (total + page_size - 1) // page_size
+        items = await get_job_logs(job_id=job_id, current_page=current_page, page_size=page_size)
+        result = {
+            "items": items,
+            "total": total,
+            "page": current_page,
+            "page_size": page_size,
+            "page_count": page_count
+        }
+        return SuccessResult(data=result)
+    except ValueError as e:
+        return ErrorResult(message=f"参数错误: {str(e)}", code=400)
+    except Exception as e:
+        logger.error(f"获取任务历史失败: {str(e)}", exc_info=True)
+        return ErrorResult(message="服务器内部错误", code=500)
+
+
+# 统计接口
 # http://127.0.0.1:8000/docs
 if __name__ == "__main__":
     import uvicorn

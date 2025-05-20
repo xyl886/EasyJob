@@ -1,6 +1,6 @@
 jobs:
-  base_package: 'Job'
-  module_pattern: 'Action.py'
+  base_package: 'Job' # 任务模块的基础包名
+  module_pattern: 'Action.py' # 任务模块的文件名模式
 mongo:
-  uri: 'mongodb://localhost:27017'
-  database: 'EasyJob'
+  uri: 'mongodb://localhost:27017' #  mongodb连接uri
+  database: 'EasyJob' #  mongodb数据库名

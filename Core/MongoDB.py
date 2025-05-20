@@ -192,8 +192,22 @@ class CollectionWrapper:
         """
         return DocumentList(list(self.collection.aggregate(pipeline)))
 
-    def count(self):
-        return int(self.collection.estimated_document_count())
+    # def count(self):
+    #     return int(self.collection.estimated_document_count())
+
+    def count(self, query: dict = None) -> int:
+        """
+        根据给定的查询条件（query）从指定集合中统计文档数量。
+
+        参数:
+            query (dict): 查询条件，使用 MongoDB 查询语法。默认为空查询。
+
+        返回:
+            int: 匹配查询条件的文档数量。
+        """
+        if query is None:
+            query = {}
+        return int(self.collection.count_documents(query))
 
     @staticmethod
     def remove_duplicates(dict_list, distinct_key):

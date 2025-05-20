@@ -23,8 +23,15 @@ async def get_job(job_id: int) -> Optional[dict]:
     return Job_c.find_documents(query={"JobId": job_id}, limit=1).dict(0)
 
 
-async def get_all_jobs() -> List[dict]:
-    return Job_c.find_documents().dict()
+async def get_jobs_count(query: dict = None):
+    return Job_c.count(query=query)
+
+
+async def get_jobs(current_page: int = 1, page_size: int = 10, filters=None) -> List[dict]:
+    if filters is None:
+        filters = {}
+    return Job_c.find_documents(query=filters, sort="JobId", limit=page_size,
+                                skip=(current_page - 1) * page_size).dict()
 
 
 async def create_job(job: Job) -> dict:
@@ -52,8 +59,21 @@ async def create_run_log(log: History) -> dict:
     return log.dict()
 
 
-async def get_job_logs(job_id: int, limit: int = 10) -> List[dict]:
-    return History_c.find_documents(query={"JobId": job_id}, sort="StartTime", limit=limit).dict()
+async def get_job_logs_count(job_id: int = None) -> int:
+    if job_id is None:
+        query = {}
+    else:
+        query = {"JobId": job_id}
+    return History_c.count(query=query)
+
+
+async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int = 10) -> List[dict]:
+    skip = (current_page - 1) * page_size
+    if job_id is None:
+        query = {}
+    else:
+        query = {"JobId": job_id}
+    return History_c.find_documents(query=query, sort="StartTime", limit=page_size, skip=skip).dict()
 
 
 # 任务执行核心

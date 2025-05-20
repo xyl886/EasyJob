@@ -45,7 +45,7 @@ class JobScheduler:
         while True:
             await asyncio.sleep(30)  # 每30秒检查一次
             await self._update_scheduler()
-            print("_current_jobs:", self._current_jobs)
+            # print("_current_jobs:", self._current_jobs)
 
     async def _update_scheduler(self):
         """更新调度器中的任务"""

@@ -10,9 +10,15 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, conint
 
+# 首先定义一些公共的校验参数
+JobIdInt = conint(ge=100000, le=9999999)  # 任务ID
+RunIdInt = conint(ge=100000, le=9999999)  # 运行ID
+PageInt = conint(ge=1)  # 页码从1开始
+PageSizeInt = conint(ge=1, le=100)  # 每页数量
+
 
 class Job(BaseModel):
-    JobId: conint(ge=100000, le=9999999) = Field(..., description="任务ID，6位整数")
+    JobId: JobIdInt = Field(..., description="任务ID，6位整数")
     JobName: str = Field(..., description="任务名称")
     JobClass: str = Field(..., description="任务对应的类名（字符串）")
     Package: str = Field(..., description="任务所在的包名")
@@ -45,8 +51,8 @@ class Job(BaseModel):
 
 
 class History(BaseModel):
-    JobId: conint(ge=100000, le=999999) = Field(..., description="任务ID，6位整数")
-    RunId: conint(ge=100000, le=999999) = Field(..., description="运行ID，6位整数")
+    JobId: JobIdInt = Field(..., description="任务ID，6位整数")
+    RunId: RunIdInt = Field(..., description="运行ID，6位整数")
     JobName: str = Field(..., description="任务名称")
     JobClass: str = Field(..., description="任务对应的类名（字符串）")
     Package: str = Field(..., description="任务所在的包名")

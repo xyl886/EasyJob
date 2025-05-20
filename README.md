@@ -63,7 +63,7 @@ import os
 from Core import JobBase
 
 class DemoAction(JobBase):
-    job_id = 100001  # 任务唯一标识
+    job_id = 100001  # 任务标识 List|Tuple|Set|Int
     folder = os.path.dirname(os.path.abspath(__file__))  # 数据存储目录
 
     def on_run(self):
@@ -81,8 +81,11 @@ class DemoAction(JobBase):
 
 ```yaml
 jobs:
-  base_package: 'Job'  # 任务模块的基础包名
-  module_pattern: 'Action.py'  # 任务模块的文件名模式
+  base_package: 'Job' # 任务模块的基础包名
+  module_pattern: 'Action.py' # 任务模块的文件名模式
+mongo:
+  uri: 'mongodb://localhost:27017' #  mongodb连接uri
+  database: 'EasyJob' #  mongodb数据库名
 ```
 
 ## 自动发现机制
