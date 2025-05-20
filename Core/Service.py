@@ -76,6 +76,17 @@ async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int
     return History_c.find_documents(query=query, sort="StartTime", limit=page_size, skip=skip).dict()
 
 
+# 获取最大的RunId
+async def get_max_RunId() -> int:
+    """获取最大dRunId"""
+    history = History_c.find_documents(sort=[("RunId", -1)], limit=1).dict(0)
+    print(history.get("RunId"))
+    if history:
+        return history.get("RunId")
+    else:
+        return 100001
+
+
 # 任务执行核心
 async def execute_job_core(job_id: int):
     """动态加载并执行任务"""
@@ -96,7 +107,7 @@ async def execute_job_core(job_id: int):
     try:
         job_id = job.get("JobId")
         history.StartTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        run_id = (int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 6
+        run_id = await get_max_RunId()
         history.RunId = run_id
         Core.run(job_id=job_id, run_id=run_id)
     except Exception as e:
