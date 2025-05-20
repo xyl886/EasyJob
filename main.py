@@ -7,11 +7,11 @@
 """
 import threading
 from contextlib import asynccontextmanager
+from typing import Dict
 
 from fastapi import FastAPI
 from fastapi import Query
 from starlette.middleware.cors import CORSMiddleware
-from typing import Dict
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -179,7 +179,9 @@ async def trigger_job(job_id: JobIdInt):
             raise HTTPException(status_code=404, detail="Job not found")
         if job["Disabled"] == 1:
             raise HTTPException(status_code=400, detail="Job is disabled")
-        threading.Thread(target=execute_job_core, args=(job_id,)).start()
+        # 启动线程
+        thread = threading.Thread(target=start_async_job, args=(job_id,))
+        thread.start()
         return SuccessResult(message="Job started in background")
     except HTTPException as e:
         return ErrorResult(code=e.status_code, message=e.detail)

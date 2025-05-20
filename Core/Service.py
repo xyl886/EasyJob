@@ -5,7 +5,7 @@
 @file: service.py
 @time: 2025/05/20
 """
-import random
+import asyncio
 import time
 from typing import List
 from typing import Optional
@@ -30,7 +30,7 @@ async def get_jobs_count(query: dict = None):
 async def get_jobs(current_page: int = 1, page_size: int = 10, filters=None) -> List[dict]:
     if filters is None:
         filters = {}
-    return Job_c.find_documents(query=filters, sort="JobId", limit=page_size,
+    return Job_c.find_documents(query=filters, sort=[("JobId", -1)], limit=page_size,
                                 skip=(current_page - 1) * page_size).dict()
 
 
@@ -73,18 +73,28 @@ async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int
         query = {}
     else:
         query = {"JobId": job_id}
-    return History_c.find_documents(query=query, sort="StartTime", limit=page_size, skip=skip).dict()
+    return History_c.find_documents(query=query, sort=[("StartTime", -1)], limit=page_size, skip=skip).dict()
 
 
 # 获取最大的RunId
 async def get_max_RunId() -> int:
     """获取最大dRunId"""
-    history = History_c.find_documents(sort=[("RunId", -1)], limit=1).dict(0)
+    history = History_c.find_documents(sort=[("RunId", -1)]).dict(0)
     print(history.get("RunId"))
     if history:
-        return history.get("RunId")
+        return history.get("RunId") + 1
     else:
         return 100001
+
+
+def start_async_job(job_id):
+    # 获取当前线程的事件循环
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # 运行异步函数
+    loop.run_until_complete(execute_job_core(job_id))
+    loop.close()
 
 
 # 任务执行核心
@@ -115,4 +125,4 @@ async def execute_job_core(job_id: int):
         history.Output = f"Job execution failed: {str(e)}"
         history.Status = JobStatus.FAILED
     history.EndTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    History_c.save_dict_to_collection(history.dict())
+    History_c.save_dict_to_collection(history.dict(), 'RunId')

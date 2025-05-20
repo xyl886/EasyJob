@@ -268,7 +268,7 @@ class CollectionWrapper:
                     data = self.remove_duplicates(data, distinct_key)
             else:
                 with self.rlock:
-                    cursor = self.collection.find(query, projection=projection, limit=limit, skip=skip)
+                    cursor = self.collection.find(query, projection=projection, limit=limit, skip=skip, sort=sort)
                     data = [doc for doc in cursor]
             cursor.batch_size = 10000  # 或根据实际情况调整 batch_size
             if self.log_enabled:
