@@ -147,7 +147,6 @@ class DocumentList:
             if not isinstance(index, int) or index < 0 or index >= len(self.documents):
                 raise IndexError(f"请检查index: {index}")
             return self.documents[index]
-
         return self.documents
 
 

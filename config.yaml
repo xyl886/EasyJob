@@ -1,3 +1,6 @@
 jobs:
   base_package: 'Job'
   module_pattern: 'Action.py'
+mongo:
+  uri: 'mongodb://localhost:27017'
+  database: 'EasyJob'

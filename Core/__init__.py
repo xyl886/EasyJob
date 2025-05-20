@@ -40,10 +40,9 @@ class JobThread(threading.Thread):
             raise self.exc  # 在主线程重新抛出异常
 
 
-def run(job_id):
+def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 6):
     if job_id not in JobBase._registry:
         raise ValueError(f"Job ID {job_id} not registered")
-    run_id = (int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 6
     job_class = JobBase._registry.get(job_id)
     job_instance = job_class(job_id=job_id, run_id=run_id)
 
@@ -106,11 +105,11 @@ def save_jobs():
                 Package=BASE_PACKAGE,
                 Description=f'This is {job_name}',
                 Disabled=1,
-                Minute="",
-                Hour="",
-                DayOfWeek="",
-                DayOfMonth="",
-                MonthOfYear="",
+                Minute="*",
+                Hour="*",
+                DayOfWeek="*",
+                DayOfMonth="*",
+                MonthOfYear="*",
                 Status=1
             ).dict()
             if job_id not in existing_job_ids:
@@ -122,4 +121,4 @@ def save_jobs():
 
 auto_import_jobs()
 save_jobs()
-__all__ = ['JobBase', 'run']
+__all__ = ['JobBase', 'run', 'save_jobs']

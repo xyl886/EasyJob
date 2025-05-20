@@ -1,0 +1,8 @@
+<component name="DependencyValidationManager">
+  <option name="ignoredFiles">
+    <list>
+      <!-- 使用正则匹配所有数字格式目录 -->
+      <option value="file:$PROJECT_DIR$/[0-9]{4}-[0-9]{2}-[0-9]{2}//*" />
+    </list>
+  </option>
+</component>

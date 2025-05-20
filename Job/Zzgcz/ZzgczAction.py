@@ -21,6 +21,8 @@ class ZzgczAction(JobBase):
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6,ja;q=0.5',
             'Connection': 'keep-alive',
             'Content-Type': 'application/json',
+            'Origin': 'https://zzgcz.com',
+            'Referer': 'https://zzgcz.com/',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
@@ -46,9 +48,10 @@ class ZzgczAction(JobBase):
     def on_run(self):
         if self.job_id == 700001:
             self.collect(1)
+        if self.job_id == 700002:
+            self.collect(2)
 
     def collect(self, pgn):
-        self.logger.info(f"Starting web pgn: {pgn}")
         json_data = {
             'scene': 'all',
             'title': '',
