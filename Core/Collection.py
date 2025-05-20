@@ -5,15 +5,14 @@
 @file: Collection.py
 @time: 2025/05/19
 """
-from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field, conint
-from typing import Optional
 
 
 class Job(BaseModel):
-    JobId: conint(ge=100000, le=999999) = Field(..., description="任务ID，6位整数")
+    JobId: conint(ge=100000, le=9999999) = Field(..., description="任务ID，6位整数")
     JobName: str = Field(..., description="任务名称")
     JobClass: str = Field(..., description="任务对应的类名（字符串）")
     Package: str = Field(..., description="任务所在的包名")

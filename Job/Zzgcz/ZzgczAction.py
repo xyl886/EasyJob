@@ -46,10 +46,11 @@ class ZzgczAction(JobBase):
         }
 
     def on_run(self):
-        if self.job_id == 700001:
-            self.collect(1)
+        count = self.db['pages'].count()
+        pgn = count // 24 + 1
+        self.logger.info(f'start {pgn}')
         if self.job_id == 700002:
-            self.collect(2)
+            self.collect(pgn)
 
     def collect(self, pgn):
         json_data = {
@@ -68,4 +69,5 @@ class ZzgczAction(JobBase):
 
         # 使用自定义集合
         results = res_json.get('results')
+        self.logger.info(f"pgn {pgn} has {len(results)} results")
         self.db['pages'].save_dict_list_to_collection(results, 'id')

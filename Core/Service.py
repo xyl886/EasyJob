@@ -15,7 +15,7 @@ from loguru import logger
 
 import Core
 from Core.Collection import Job, History, JobStatus
-from Utils.config import Job_c, History_c
+from . import Job_c, History_c
 
 
 # CRUD操作

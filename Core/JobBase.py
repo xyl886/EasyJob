@@ -166,6 +166,11 @@ class JobBase:
         raise NotImplementedError("Subclasses must implement this method")
 
     def md5_encrypt(self, text):
+        """
+        MD5 加密
+        :param text:
+        :return:
+        """
         text = str(text)
         md5 = hashlib.md5()
         md5.update(text.encode('utf-8'))
@@ -313,9 +318,9 @@ class JobBase:
             return None
         try:
             if date:
-                save_path = self.folder + '/' + date + '/' + file_name
+                save_path = self.folder + '\\' + date + '\\' + file_name
             else:
-                save_path = self.folder + '/' + self.date + '/' + file_name
+                save_path = self.folder + '\\' + self.date + '\\' + file_name
             with open(save_path, "r", encoding="utf-8") as f:
                 f_read = f.read()
         except FileNotFoundError:

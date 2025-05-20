@@ -5,37 +5,53 @@
 @file: main.py
 @time: 2025/05/19
 """
-import asyncio
 import threading
 from contextlib import asynccontextmanager
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
+from Core import auto_import_jobs, MODULE_PATTERN, BASE_PACKAGE
 
-from Core import save_jobs
-from Utils.result import *
-from Utils.scheduler import setup_scheduler, scheduler
-from Utils.service import *
+from Core.Result import *
+from Core.Scheduler import JobScheduler
+from Core.Service import *
 
 """
 基于FastAPI的任务调度平台核心实现
 """
 
+# 创建全局调度器实例
+job_scheduler = JobScheduler()
+# 创建观察者实例
+observer = Observer()
 
+
+class JobFileHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith(MODULE_PATTERN):
+            auto_import_jobs()
+
+
+# 生命周期管理
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时
-    if not scheduler.running:
-        scheduler.start()
-    asyncio.create_task(run_periodic_task())
-    asyncio.create_task(setup_scheduler())
+    auto_import_jobs()
+    observer.schedule(JobFileHandler(), path=BASE_PACKAGE, recursive=True)
+    observer.start()
+    await job_scheduler.start()
     yield
-    # 关闭时
-    if scheduler.running:
-        scheduler.shutdown()
+    await job_scheduler.shutdown()
 
 
-app = FastAPI(title="EasyJob Scheduler", version="1.0.0", lifespan=lifespan)
+# 创建FastAPI实例
+app = FastAPI(
+    title="EasyJob Scheduler",
+    version="1.0.0",
+    lifespan=lifespan
+)
+# 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Specify exact frontend origins
@@ -131,14 +147,8 @@ async def get_job_history(job_id: int, limit: int = 10):
         return ErrorResult(message=str(e))
 
 
-async def run_periodic_task():
-    while True:
-        await asyncio.sleep(60)
-        save_jobs()
-
-
 # http://127.0.0.1:8000/docs
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
