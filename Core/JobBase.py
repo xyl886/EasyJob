@@ -2,7 +2,6 @@
 # Core/JobBase.py
 import datetime
 import hashlib
-import json
 import logging
 import os
 import sys
@@ -14,6 +13,7 @@ import requests
 from loguru import logger
 from requests import RequestException
 
+from .Config import content_type_ext
 from .MongoDB import MongoDB
 
 
@@ -56,13 +56,15 @@ def retry(
                             f"Error: {str(final_error)}"
                         )
                         logger.error(error_log)
-
+                    raise final_error
                 except Exception as unexpected_error:
                     # 捕获未预期的异常，立即终止并记录
                     logger.critical(
-                        f"[UNEXPECTED ERROR] {func_name} failed with unhandled exception\n"
-                        f"Error: {str(unexpected_error)}"
+                        f"[UNEXPECTED ERROR] Attempt {attempt} failed:\n"
+                        f"Params: args={args}, kwargs={kwargs}\n"
+                        f"Error: {unexpected_error}"
                     )
+                    raise unexpected_error
 
         return wrapper
 
@@ -177,6 +179,7 @@ class JobBase:
         return md5.hexdigest()
 
     @retry(30)
+    @logger.catch
     def send_request(
             self,
             url: str,
@@ -228,8 +231,6 @@ class JobBase:
         res = None
         if not force_refresh and dump_file_name is not None:
             res = self.get_dump(file_name=dump_file_name)
-            if res_type == 'json' and res is not None:
-                res = json.loads(res)
         # 若缓存不存在或强制刷新，则发起请求
         if res is None or force_refresh:
             try:
@@ -259,20 +260,20 @@ class JobBase:
                 raise  # 触发 retry 装饰器重试
             if res_type == 'text':
                 res = response.text
-                dump_data = res
             elif res_type == 'json':
                 res = response.json()
-                dump_data = json.dumps(res, ensure_ascii=False)
             elif res_type == 'content':
                 res = response.content
-                dump_data = res
             else:
-                raise ValueError(f"not supported res_type: {res_type}，可选 'text', 'json', 'content'")
+                error = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
+                raise error
             if dump_file_name is not None:
                 try:
-                    self.dump(dump_data, file_name=dump_file_name)  # 假设 dump 方法能处理不同类型数据
+                    self.dump(res, file_name=dump_file_name, res_type=res_type)  # 假设 dump 方法能处理不同类型数据
                 except Exception as e:
-                    self.logger.error(f"failed to save the cache file: {e}")
+                    error = f"failed to save the cache file: {e}, res: \n{res}"
+                    self.logger.error(error)
+                    raise Exception(f"failed to save the cache file: {e}")
         # 通过 validate_str_list对响应校验，决定是否重试
         for each_validate_str in validate_str_list:
             if each_validate_str not in str(res):
@@ -280,39 +281,59 @@ class JobBase:
                 raise requests.exceptions.RequestException("请求失败")
         return res
 
-    def dump(self, res_text, file_name: str):
+    def dump(self, res_text, file_name: str, res_type: str = "text"):
         """
-        将文本内容保存到指定路径
+        将内容保存到指定路径
 
         Args:
-            res_text: 要保存的文本内容
+            res_text: 要保存的内容（根据res_type可以是文本、json对象或二进制内容）
             file_name: 完整的文件保存路径（如 `data/dump_2023.txt`）
+            res_type: 内容类型，可选值：
+                - "text": 文本内容（默认）
+                - "json": JSON对象（会自动转换为字符串）
+                - "content": 二进制内容（如图片等）
         """
         if file_name is None:
             raise ValueError("file_name cannot be None")
         if res_text is None:
             raise ValueError("res_text cannot be None")
+
         # 自动创建父目录（如果不存在）
         save_folder = self.folder + '\\' + self.date
         os.makedirs(save_folder, exist_ok=True)
-        # 写入内容（默认覆盖已有文件）
-        with open(save_folder + '\\' + file_name, "w", encoding="utf-8") as f:
-            f.write(str(res_text))
+
+        # 处理不同内容类型
+        file_path = os.path.join(save_folder, file_name)
+        if res_type == "text":
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(str(res_text))
+        elif res_type == "json":
+            import json
+            with open(file_path, "w", encoding="utf-8", errors="replace") as f:
+                json.dump(res_text, f, ensure_ascii=False, indent=2)
+        elif res_type == "content":
+            with open(file_path, "wb") as f:
+                f.write(res_text)
+        else:
+            raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
         self.logger.info(f'{file_name} saved_to {save_folder}')
 
     def get_dump(self, file_name: str, date=None):
         """
-        从指定路径读取已保存的文本内容
+        从指定路径读取已保存的内容，根据文件扩展名自动推断内容类型
 
         Args:
-            date: 可指定dump日期 %Y-%m-%d
             file_name: 文件名称
+            date: 可指定dump日期 %Y-%m-%d
 
         Returns:
-            读取到的文本内容（字符串）
+            读取到的内容，自动根据文件扩展名返回：
+            - .json 文件：返回解析后的JSON对象
+            - 图片等二进制文件：返回二进制内容
+            - 其他：返回文本内容
 
         Raises:
-            FileNotFoundError: 文件不存在时抛出异常
+            FileNotFoundError: 文件不存在时返回None
         """
         if file_name is None:
             return None
@@ -321,10 +342,21 @@ class JobBase:
                 save_path = self.folder + '\\' + date + '\\' + file_name
             else:
                 save_path = self.folder + '\\' + self.date + '\\' + file_name
-            with open(save_path, "r", encoding="utf-8") as f:
-                f_read = f.read()
+
+            # 根据文件扩展名推断内容类型
+            ext = os.path.splitext(file_name)[1].lower()
+
+            if ext == '.json':
+                import json
+                with open(save_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            elif ext in content_type_ext.values().lower():  # 图片等二进制文件
+                with open(save_path, "rb") as f:
+                    return f.read()
+            else:  # 默认按文本处理
+                with open(save_path, "r", encoding="utf-8") as f:
+                    return f.read()
+
         except FileNotFoundError:
             self.logger.info(f"File {file_name} not found")
             return None
-        self.logger.info(f'{file_name} has been read from {save_path}')
-        return f_read

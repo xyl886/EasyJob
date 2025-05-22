@@ -71,13 +71,6 @@
             >
               编辑
             </el-button>
-<!--            <el-button-->
-<!--                size="small"-->
-<!--                type="info"-->
-<!--                @click="viewRunRecords(row)"-->
-<!--            >-->
-<!--              记录-->
-<!--            </el-button>-->
             <el-button
                 size="small"
                 type="danger"
@@ -456,11 +449,11 @@ onMounted(() => {
 
 <style scoped>
 .search-form {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .pagination-container {
-  margin-top: 20px;
+  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
 }
@@ -471,7 +464,7 @@ onMounted(() => {
 }
 
 .jobs-container {
-  padding: 20px;
+  padding: 10px;
 }
 
 .card-header {
@@ -482,8 +475,8 @@ onMounted(() => {
 
 .job-info {
   border-bottom: 1px solid #ebeef5;
-  padding-bottom: 15px;
-  margin-bottom: 15px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
 }
 
 .log-output {

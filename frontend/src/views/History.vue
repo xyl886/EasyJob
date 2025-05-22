@@ -10,9 +10,8 @@
       <!-- 搜索和过滤区域 -->
       <el-form :model="searchForm" :inline="true" class="search-form">
         <el-form-item label="任务ID">
-          <el-input-number 
+          <el-input
             v-model="searchForm.job_id" 
-            :min="1" 
             :controls="false"
             placeholder="输入任务ID" 
             clearable
@@ -20,9 +19,9 @@
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="全部状态" clearable @change="handleSearch">
-            <el-option label="成功" :value="1"/>
-            <el-option label="失败" :value="0"/>
+          <el-select style="width: 120px" v-model="searchForm.status" placeholder="全部状态" clearable @change="handleSearch">
+            <el-option label="成功" :value="3"/>
+            <el-option label="失败" :value="4"/>
           </el-select>
         </el-form-item>
         <el-form-item>

@@ -105,12 +105,7 @@ const jobStore = useJobStore()
 const jobId = computed(() => parseInt(route.params.id))
 const logDialogVisible = ref(false)
 const selectedLog = ref(null)
-//class JobStatus(int, Enum):
-//     DISABLED = 0
-//     READY = 1
-//     RUNNING = 2
-//     COMPLETED = 3
-//     FAILED = 4
+
 const getStatusType = (status) => {
   switch (status) {
     case 0:

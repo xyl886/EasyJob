@@ -49,9 +49,6 @@
             <el-radio :label="1">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
-        
-        <el-divider>Cron 表达式设置</el-divider>
-        
         <el-form-item label="分钟" prop="Minute">
           <el-input v-model="jobForm.Minute" />
           <div class="form-help">例如：*/5 表示每5分钟，0-30 表示0到30分钟，留空表示每分钟</div>
@@ -251,7 +248,7 @@ onMounted(async () => {
 
 <style scoped>
 .job-form-container {
-  padding: 20px;
+  padding: 10px;
   max-width: 800px;
   margin: 0 auto;
 }
@@ -260,7 +257,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .form-help {
@@ -275,13 +272,13 @@ onMounted(async () => {
 }
 
 .el-divider {
-  margin: 20px 0;
+  margin: 10px 0;
 }
 
 .form-actions {
   display: flex;
   justify-content: center;
-  margin-top: 30px;
+  margin-top: 10px;
 }
 
 .form-actions .el-button {

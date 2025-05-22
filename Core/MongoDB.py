@@ -12,97 +12,6 @@ from pymongo import MongoClient
 from typing import List, Union
 
 
-class MongoDB:
-    def __init__(
-            self,
-            uri='',
-            host='localhost',
-            port=27017,
-            db_name: str = '',
-            username: str = None,
-            password: str = None,
-            log_enabled: bool = True):
-        """
-        初始化 MongoDB 连接
-        :param uri: uri
-        :param host: MongoDB服务器地址
-        :param port: MongoDB服务器端口
-        :param db_name: 数据库名称
-        :param username: 用户名
-        :param password: 密码
-        :param log_enabled: 是否开启日志
-        """
-        self.uri = uri
-        self.host = host
-        self.port = port
-        self.log_enabled = log_enabled
-        self.client = None
-        self.db = None
-        self.db_name = db_name
-        # 先尝试从环境变量读取，如果环境变量没有，则使用传入的参数
-        self.username = os.getenv("MONGO_USERNAME", username)
-        self.password = os.getenv("MONGO_PASSWORD", password)
-        self._connect_to_db()
-        logger.info(f"已连接 MongoDB: {self.db_name}")
-
-    def __getitem__(self, collection_name: str):
-        """
-        获取指定的集合
-        :param collection_name: 集合名称
-        :return: 集合对象
-        """
-        if self.db is None:
-            raise Exception("数据库未选择")
-        if not isinstance(collection_name, str):
-            raise TypeError("collection_name 必须为字符串")
-        collection = self.db[collection_name]
-
-        # 尝试获取集合统计信息以验证连接有效性
-        try:
-            collection_stats = collection.estimated_document_count()
-            if self.log_enabled:
-                logger.info(f"成功连接到集合 {self.db_name}:{collection_name}，当前文档数: {collection_stats}")
-        except Exception as e:
-            logger.error(f"无法连接到集合 {self.db_name}:{collection_name}: {e}")
-            raise
-        return CollectionWrapper(self.db_name, self.db[collection_name], log_enabled=self.log_enabled)
-
-    def _connect_to_db(self):
-        if self.uri:
-            self.client = MongoClient(self.uri)
-            self.db = self.client[self.db_name]
-            return
-        try:
-            if self.username and self.password:
-                self.client = MongoClient(
-                    f"mongodb://{self.username}:{self.password}@{self.host}:{self.port}/{self.username}")
-            else:
-                self.client = MongoClient(f"mongodb://{self.host}:{self.port}")
-            if self.db_name:
-                self.db = self.client[self.db_name]
-        except Exception as e:
-            self._handle_connection_error(e)
-
-    def _handle_connection_error(self, e):
-        error_msg = f"无法连接到 MongoDB 数据库 ({self.db_name})，请检查以下信息："
-        if not self.username or not self.password:
-            error_msg += "\n- 用户名和/或密码未提供或无效"
-        error_msg += f"\n- 主机: {self.host}\n- 端口: {self.port}\n\n详细错误：{str(e)}"
-        raise ConnectionError(error_msg)
-
-    def close(self):
-        """
-        关闭与 MongoDB 的连接。
-        """
-        try:
-            if self.client:
-                self.client.close()
-        except Exception as e:
-            logger.error(f"关闭MongoDB连接时发生错误: {e}")
-            raise
-        logger.info("MongoDB 连接已关闭")
-
-
 class DocumentList:
     def __init__(self, documents):
         """
@@ -161,8 +70,7 @@ class CollectionWrapper:
         self.collection_name = collection.name
         self.collection = collection
         self.rlock = threading.RLock()  # 为每个集合添加锁
-        # 添加日志开关
-        self.log_enabled = log_enabled
+        self.log_enabled = log_enabled  # 添加日志开关
 
     def __getitem__(self, key):
         """
@@ -212,13 +120,11 @@ class CollectionWrapper:
     @staticmethod
     def remove_duplicates(dict_list, distinct_key):
         """
-        根据字典中的 `uid` 键值进行去重。
-
         参数:
             dict_list (list[dict]): 包含字典的列表。
             distinct_key(str,optional): 根据某个key的value进行去重
         返回:
-            list: 去重后的字典列表。
+            list[dict]: 去重后的字典列表。
         """
         seen_ids = set()
         unique_list = []
@@ -554,10 +460,13 @@ class CollectionWrapper:
         md5.update(text.encode('utf-8'))
         return md5.hexdigest()
 
-    def delete_documents(self, query=None, skip=None, limit=None, recyclable=False, drop_if_empty=False):
+    def delete_documents(self, query: dict = None, skip: int = None, limit: int = None, recyclable: bool = False,
+                         drop_if_empty: bool = False):
         """
         删除满足条件的文档并根据需要将其移至回收站。
         :param query: 查询条件，字典格式
+        :param skip: 跳过指定数量的文档，用于分页。
+        :param limit: 返回结果的最大数量，默认返回所有匹配的文档。
         :param recyclable: 是否将文档移至回收站，默认为False
         :param drop_if_empty: 是否在删除所有满足条件的文档后，如果集合为空则删除集合，默认为False
         :return: 删除的文档数量
@@ -615,6 +524,97 @@ class CollectionWrapper:
         except Exception as e:
             logger.error(f"删除文档时出错：{str(e)}")
             raise
+
+
+class MongoDB:
+    def __init__(
+            self,
+            uri='',
+            host='localhost',
+            port=27017,
+            db_name: str = '',
+            username: str = None,
+            password: str = None,
+            log_enabled: bool = True):
+        """
+        初始化 MongoDB 连接
+        :param uri: uri
+        :param host: MongoDB服务器地址
+        :param port: MongoDB服务器端口
+        :param db_name: 数据库名称
+        :param username: 用户名
+        :param password: 密码
+        :param log_enabled: 是否开启日志
+        """
+        self.uri = uri
+        self.host = host
+        self.port = port
+        self.log_enabled = log_enabled
+        self.client = None
+        self.db = None
+        self.db_name = db_name
+        # 先尝试从环境变量读取，如果环境变量没有，则使用传入的参数
+        self.username = os.getenv("MONGO_USERNAME", username)
+        self.password = os.getenv("MONGO_PASSWORD", password)
+        self._connect_to_db()
+        logger.info(f"已连接 MongoDB: {self.db_name}")
+
+    def __getitem__(self, collection_name: str) -> CollectionWrapper:
+        """
+        获取指定的集合
+        :param collection_name: 集合名称
+        :return: 集合对象
+        """
+        if self.db is None:
+            raise Exception("数据库未选择")
+        if not isinstance(collection_name, str):
+            raise TypeError("collection_name 必须为字符串")
+        collection = self.db[collection_name]
+
+        # 尝试获取集合统计信息以验证连接有效性
+        try:
+            collection_stats = collection.estimated_document_count()
+            if self.log_enabled:
+                logger.info(f"成功连接到集合 {self.db_name}:{collection_name}，当前文档数: {collection_stats}")
+        except Exception as e:
+            logger.error(f"无法连接到集合 {self.db_name}:{collection_name}: {e}")
+            raise
+        return CollectionWrapper(self.db_name, self.db[collection_name], log_enabled=self.log_enabled)
+
+    def _connect_to_db(self):
+        if self.uri:
+            self.client = MongoClient(self.uri)
+            self.db = self.client[self.db_name]
+            return
+        try:
+            if self.username and self.password:
+                self.client = MongoClient(
+                    f"mongodb://{self.username}:{self.password}@{self.host}:{self.port}/{self.username}")
+            else:
+                self.client = MongoClient(f"mongodb://{self.host}:{self.port}")
+            if self.db_name:
+                self.db = self.client[self.db_name]
+        except Exception as e:
+            self._handle_connection_error(e)
+
+    def _handle_connection_error(self, e):
+        error_msg = f"无法连接到 MongoDB 数据库 ({self.db_name})，请检查以下信息："
+        if not self.username or not self.password:
+            error_msg += "\n- 用户名和/或密码未提供或无效"
+        error_msg += f"\n- 主机: {self.host}\n- 端口: {self.port}\n\n详细错误：{str(e)}"
+        raise ConnectionError(error_msg)
+
+    def close(self):
+        """
+        关闭与 MongoDB 的连接。
+        """
+        try:
+            if self.client:
+                self.client.close()
+        except Exception as e:
+            logger.error(f"关闭MongoDB连接时发生错误: {e}")
+            raise
+        logger.info("MongoDB 连接已关闭")
 
 
 # 示例用法

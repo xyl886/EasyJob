@@ -40,7 +40,6 @@ class JobFileHandler(FileSystemEventHandler):
 # 生命周期管理
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    auto_import_jobs()
     observer.schedule(JobFileHandler(), path=BASE_PACKAGE, recursive=True)
     observer.start()
     await job_scheduler.start()
@@ -105,7 +104,7 @@ async def list_jobs(
         # 添加查询参数过滤
         filters = {}
         if job_name:
-            filters["job_name"] = {"$regex": job_name}
+            filters["JobName"] = {"$regex": job_name}
         if status is not None:
             filters["Disabled"] = status
 
@@ -129,7 +128,7 @@ async def list_jobs(
     except ValueError as e:
         return ErrorResult(message=f"参数错误: {str(e)}", code=400)
     except Exception as e:
-        logger.error(f"获取任务列表失败: {str(e)}", exc_info=True)
+        logger.error(f"获取任务列表失败: {str(e)}")
         return ErrorResult(message="服务器内部错误", code=500)
 
 
@@ -192,7 +191,10 @@ async def trigger_job(job_id: JobIdInt):
 @app.get("/history", response_model=Result[Dict])
 async def get_history(
         current_page: PageInt = Query(1, description="当前页码，从1开始"),
-        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100)
+        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100),
+        job_name: Optional[str] = Query(None, description="任务名称模糊查询", max_length=50),
+        status: Optional[int] = Query(None, description="任务状态")
+
 ):
     """
     获取任务执行历史记录
@@ -209,9 +211,18 @@ async def get_history(
     }
     """
     try:
-        total = await get_job_logs_count()
+        # 添加查询参数过滤
+        filters = {}
+        if job_name:
+            filters["$or"] = [
+                {"JobName": {"$regex": job_name}},
+                {"JobId": job_name}
+            ]
+        if status is not None:
+            filters["Status"] = status
+        total = await get_job_logs_count(filters=filters)
         page_count = (total + page_size - 1) // page_size
-        items = await get_job_logs(current_page=current_page, page_size=page_size)
+        items = await get_job_logs(current_page=current_page, page_size=page_size,  filters=filters)
         result = {
             "items": items,
             "total": total,
@@ -223,7 +234,7 @@ async def get_history(
     except ValueError as e:
         return ErrorResult(message=f"参数错误: {str(e)}", code=400)
     except Exception as e:
-        logger.error(f"获取任务历史失败: {str(e)}", exc_info=True)
+        logger.error(f"获取任务历史失败: {str(e)}")
         return ErrorResult(message="服务器内部错误", code=500)
 
 
@@ -231,7 +242,7 @@ async def get_history(
 async def get_job_history(
         job_id: Optional[JobIdInt] = None,  # 可选参数
         current_page: PageInt = Query(1, description="当前页码，从1开始"),
-        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100)
+        page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100),
 ):
     """
     获取任务执行历史记录
@@ -249,7 +260,7 @@ async def get_job_history(
     }
     """
     try:
-        total = await get_job_logs_count(job_id)
+        total = await get_job_logs_count(job_id=job_id)
         page_count = (total + page_size - 1) // page_size
         items = await get_job_logs(job_id=job_id, current_page=current_page, page_size=page_size)
         result = {
@@ -263,7 +274,7 @@ async def get_job_history(
     except ValueError as e:
         return ErrorResult(message=f"参数错误: {str(e)}", code=400)
     except Exception as e:
-        logger.error(f"获取任务历史失败: {str(e)}", exc_info=True)
+        logger.error(f"获取任务历史失败: {str(e)}")
         return ErrorResult(message="服务器内部错误", code=500)
 
 

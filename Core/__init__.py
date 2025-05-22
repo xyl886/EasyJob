@@ -36,12 +36,13 @@ def get_file_path(current_file, marker=""):
 yaml_path = ''
 try:
     yaml_path = get_file_path(__file__, marker="config.yaml")
+    print(f"[AutoImport] config.yaml found at: {yaml_path}")
 except Exception as e:
-    print("[AutoImport] Failed to load config.yaml, e:" + str(e))
+    print("[AutoImport] Failed to get_file_path config.yaml, e:" + str(e))
 try:
     import yaml
 
-    with open(yaml_path) as f:
+    with open(yaml_path, encoding='utf-8') as f:
         config = yaml.safe_load(f)
     BASE_PACKAGE = config.get('jobs').get('base_package', 'Job')
     MODULE_PATTERN = config.get('jobs').get('module_pattern', 'Action.py')
@@ -158,6 +159,7 @@ def save_jobs():
             traceback.print_exc()
 
 
+auto_import_jobs()
 __all__ = [
     'BASE_PACKAGE',
     'MODULE_PATTERN',
