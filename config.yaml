@@ -1,6 +1,13 @@
 jobs:
   base_package: 'Job' # 任务模块的基础包名
   module_pattern: 'Action.py' # 任务模块的文件名模式
+  debug: true
 mongo:
   uri: 'mongodb://localhost:27017' #  mongodb连接uri
   database: 'EasyJob' #  mongodb数据库名
+smtp:
+    host: 'smtp.qq.com'
+    port: 587
+    user: '1803466516@qq.com'
+    password: 'favqogvppmfjbgcj'
+    to: '1803466516@qq.com'

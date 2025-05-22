@@ -52,20 +52,19 @@ class DemoAction(JobBase):
     def collect(self):
         return
 
-    def curl(self, url):
-        # application/json
-        response = self.send_request(url,
-                                     method='get',
-                                     headers=self.json_headers,
-                                     dump_file_name='',
-                                     json_data={},
-                                     res_type='json',
-                                     validate_str_list=[])
+    def curl(self, url, dump_file_name, json_data=None):
         # text/html
-        # response = self.send_request(url,
+        # return self.send_request(url,
         #                              method='get',
         #                              headers=self.text_headers,
-        #                              dump_file_name='',
+        #                              dump_file_name=dump_file_name,
         #                              res_type='text',
         #                              validate_str_list=[])
-        return response
+        # application/json
+        return self.send_request(url,
+                                 method='get',
+                                 headers=self.json_headers,
+                                 dump_file_name=dump_file_name,
+                                 json_data=json_data,
+                                 res_type='json',
+                                 validate_str_list=[])

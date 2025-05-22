@@ -59,20 +59,22 @@ async def create_run_log(log: History) -> dict:
     return log.dict()
 
 
-async def get_job_logs_count(job_id: int = None) -> int:
-    if job_id is None:
-        query = {}
-    else:
-        query = {"JobId": job_id}
+async def get_job_logs_count(job_id: int = None, filters: dict = None) -> int:
+    query = {}
+    if job_id:
+        query["JobId"] = job_id
+    if filters:
+        query.update(filters)
     return History_c.count(query=query)
 
 
-async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int = 10) -> List[dict]:
+async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int = 10, filters=None) -> List[dict]:
     skip = (current_page - 1) * page_size
-    if job_id is None:
-        query = {}
-    else:
-        query = {"JobId": job_id}
+    query = {}
+    if job_id:
+        query["JobId"] = job_id
+    if filters:
+        query.update(filters)
     return History_c.find_documents(query=query, sort=[("StartTime", -1)], limit=page_size, skip=skip).dict()
 
 
@@ -80,7 +82,6 @@ async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int
 async def get_max_RunId() -> int:
     """获取最大dRunId"""
     history = History_c.find_documents(sort=[("RunId", -1)]).dict(0)
-    print(history.get("RunId"))
     if history:
         return history.get("RunId") + 1
     else:

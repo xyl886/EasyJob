@@ -15,7 +15,12 @@ import threading
 import time
 import traceback
 
+from typing import List
+
+from jinja2 import Template
+
 from .Collection import Job
+from .Email import SMTPConfig, EmailMessageContent, EmailSender
 from .JobBase import JobBase
 from .MongoDB import MongoDB
 from pathlib import Path
@@ -46,8 +51,11 @@ try:
         config = yaml.safe_load(f)
     BASE_PACKAGE = config.get('jobs').get('base_package', 'Job')
     MODULE_PATTERN = config.get('jobs').get('module_pattern', 'Action.py')
+    DEBUG = config.get('jobs').get('debug')
     MONGO_URI = config.get('mongo').get('uri', 'mongodb://localhost:27017')
     DB_NAME = config.get('mongo').get('database', 'EasyJob')
+    SMTP = config.get('smtp')
+    TO = config.get('smtp').get('to')
 except Exception as e:
     print(f"[AutoImport] Failed to load config.yaml: {e}")
     BASE_PACKAGE = 'Job'
@@ -80,6 +88,35 @@ class JobThread(threading.Thread):
             raise self.exc  # 在主线程重新抛出异常
 
 
+# ✅ 使用示例
+def send_email(title: str, logs: List[dict] = None):
+    if logs is None:
+        logs = []
+    header = sorted({key for log in logs for key in log.keys()})
+
+    # 加载模板
+    template_path = get_file_path(__file__, marker="log_template.html")
+    with open(template_path, encoding="utf-8") as f:
+        template = Template(f.read())
+
+    # 渲染 HTML 内容
+    rendered_html = template.render(title=title, logs=logs, header=header)
+    email_content = EmailMessageContent(
+        to=TO.split(","),
+        subject=title,
+        body=rendered_html,
+        subtype="html"
+    )
+    smtp_config = SMTPConfig(
+        login=SMTP.get('user'),
+        password=SMTP.get('password'),
+        smtp_server=SMTP.get('host'),
+        smtp_port=SMTP.get('port'),
+    )
+    sender = EmailSender(smtp_config)
+    sender.send(email_content)
+
+
 def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 6):
     """
     运行指定任务
@@ -103,6 +140,17 @@ def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 *
     except Exception as e:
         job_instance.logger.error(f"Job failed: {str(e)}", exc_info=True)
         raise
+    if DEBUG is False:
+        query = {
+            'level': {'$gte': 30},  # 大于30
+            'job_id': job_id,
+            'run_id': run_id
+        }
+        logs = job_instance.db['log'].find_documents(query=query).dict()
+        title = f"{job_instance.db_name}:{job_instance.job_id}"
+        email_thread = threading.Thread(target=send_email, args=(title, logs))
+        email_thread.start()
+        email_thread.join()
 
 
 def auto_import_jobs(base_package=BASE_PACKAGE):
@@ -164,6 +212,7 @@ __all__ = [
     'BASE_PACKAGE',
     'MODULE_PATTERN',
     'run',
+    'get_file_path',
     'auto_import_jobs',
     'save_jobs'
 ]

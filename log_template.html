@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-family: Arial, sans-serif;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            text-align: left;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .level-50 {
+            color: blue;
+        }
+
+        .level-40 {
+            color: red;
+            font-weight: bold;
+        }
+
+        .level-30 {
+            color: orange;
+        }
+
+        .level-20 {
+            color: #333;
+        }
+
+        .level-10 {
+            color: green;
+        }
+
+        h2 {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<h2>{{ title or "日志报告" }}</h2>
+<table>
+    <thead>
+    <tr>
+        {% for key in header %}
+        <th>{{ key }}</th>
+        {% endfor %}
+    </tr>
+    </thead>
+    <tbody>
+    {% for row in logs %}
+    <tr>
+        {% for key in header %}
+        {% set value = row.get(key, "") %}
+        <td class="level-{{ value if key == 'level' else '' }}">{{ value }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</body>
+</html>

@@ -72,7 +72,10 @@ def retry(
 
 
 class MongoDBHandler:
-    """自定义MongoDB日志处理器（仅记录ERROR及以上级别）"""
+    """自定义MongoDB日志处理器（仅记录ERROR及以上级别）
+        self.db = MongoDB(db_name=self.db_name, log_enabled=False)
+        self.log_handler = MongoDBHandler(db=self.db, db_name=self.db_name, job_id=self.job_id, run_id=self.run_id)
+    """
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -95,7 +98,7 @@ class MongoDBHandler:
             'job_id': self.job_id,
             'run_id': self.run_id,
             'timestamp': record["time"].astimezone().replace(tzinfo=None),
-            'level': record["level"].name,
+            'level': record["level"].no,
             'message': record["message"],
             'logger': f"{self.db_name}.{self.job_id}",
             'module': record["module"],
