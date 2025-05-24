@@ -8,6 +8,6 @@ mongo:
 smtp:
     host: 'smtp.qq.com'
     port: 587
-    user: '1803466516@qq.com'
-    password: 'favqogvppmfjbgcj'
-    to: '1803466516@qq.com'
+    user: ''
+    password: ''
+    to: ''
