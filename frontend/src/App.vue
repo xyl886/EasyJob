@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue'
-import { Menu as IconMenu, Timer, Document, Setting } from '@element-plus/icons-vue'
+import {ref} from 'vue'
+import {Menu as IconMenu, Timer, Document, Setting} from '@element-plus/icons-vue'
 
 const isCollapse = ref(false)
 </script>
@@ -9,51 +9,61 @@ const isCollapse = ref(false)
   <el-container class="app-container">
     <el-aside width="auto">
       <el-menu
-        default-active="/"
-        class="sidebar-menu"
-        :collapse="isCollapse"
-        :router="true"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409EFF"
+          default-active="/"
+          class="sidebar-menu"
+          :collapse="isCollapse"
+          :router="true"
+          background-color="#304156"
+          text-color="#bfcbd9"
+          active-text-color="#409EFF"
       >
         <div class="logo-container">
           <span v-if="!isCollapse" class="logo-text">EasyJob</span>
-          <el-icon v-else class="logo-icon"><Timer /></el-icon>
+          <el-icon v-else class="logo-icon">
+            <Timer/>
+          </el-icon>
         </div>
-        
+
         <el-menu-item index="/">
-          <el-icon><Document /></el-icon>
+          <el-icon>
+            <Document/>
+          </el-icon>
           <template #title>首页</template>
         </el-menu-item>
-        
+
         <el-menu-item index="/jobs">
-          <el-icon><Timer /></el-icon>
+          <el-icon>
+            <Timer/>
+          </el-icon>
           <template #title>任务管理</template>
         </el-menu-item>
-        
+
         <el-menu-item index="/history">
-          <el-icon> <Setting /></el-icon>
+          <el-icon>
+            <Setting/>
+          </el-icon>
           <template #title>运行记录</template>
         </el-menu-item>
-        
+
         <div class="collapse-btn" @click="isCollapse = !isCollapse">
-          <el-icon><IconMenu /></el-icon>
+          <el-icon>
+            <IconMenu/>
+          </el-icon>
         </div>
       </el-menu>
     </el-aside>
-    
+
     <el-container>
       <el-header>
         <div class="header-content">
           <h2>EasyJob 任务调度平台</h2>
         </div>
       </el-header>
-      
+
       <el-main>
-        <router-view />
+        <router-view/>
       </el-main>
-      
+
       <el-footer>
         <div class="footer-content">
           <p>© {{ new Date().getFullYear() }} EasyJob 任务调度平台</p>
@@ -138,10 +148,13 @@ html, body {
 }
 
 .header-content {
+  align-items: center; /* 垂直居中 */
   width: 100%;
-  display: flex;
   justify-content: space-between;
-  align-items: center;
+}
+
+.header-content h2 {
+  margin: 0; /* 清除默认边距 */
 }
 
 .el-main {

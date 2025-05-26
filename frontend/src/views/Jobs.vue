@@ -32,11 +32,11 @@
           border
           stripe
       >
-        <el-table-column prop="JobId" label="任务ID" width="100"/>
-        <el-table-column prop="JobName" label="任务名称"/>
-        <el-table-column prop="JobClass" label="任务类"/>
-        <el-table-column prop="Package" label="包名"/>
-        <el-table-column label="Cron表达式" width="200">
+        <el-table-column prop="JobId" label="任务ID" sortable/>
+        <el-table-column prop="JobName" label="任务名称" sortable/>
+        <el-table-column prop="JobClass" label="任务类" sortable/>
+        <el-table-column prop="Package" label="包名" width="100" sortable/>
+        <el-table-column label="Cron表达式" sortable width="250">
           <template #default="{ row }">
             {{ formatCronExpression(row) }}
           </template>
@@ -54,7 +54,6 @@
                 size="small"
                 type="primary"
                 @click="runJob(row.JobId)"
-                :disabled="row.Disabled === 1"
             >
               执行
             </el-button>
@@ -303,12 +302,25 @@ const fetchJobs = async () => {
 // Run a job
 const runJob = async (jobId) => {
   try {
-    const success = await jobStore.runJob(jobId)
+    // 添加确认弹窗
+    await ElMessageBox.confirm('确定要执行此任务吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    // 用户确认后执行任务
+    const success = await jobStore.runJob(jobId)  // 修正原代码多余的括号
     if (success) {
       ElMessage.success('任务已触发执行')
     }
   } catch (error) {
-    ElMessage.error(error.message || '触发任务执行失败')
+    // 区分取消操作和任务失败的情况
+    if (error === 'cancel' || error === 'close') {
+      ElMessage.info('操作已取消')
+    } else {
+      ElMessage.error(error.message || '触发任务执行失败')
+    }
   }
 }
 // Open job form dialog
@@ -323,7 +335,7 @@ const openJobDialog = (job = null) => {
       JobClass: '',
       Package: '',
       Description: '',
-      Disabled: 0,
+      Disabled: 1,
       Minute: '',
       Hour: '',
       DayOfMonth: '',
@@ -464,7 +476,7 @@ onMounted(() => {
 }
 
 .jobs-container {
-  padding: 10px;
+  padding: 15px;
 }
 
 .card-header {

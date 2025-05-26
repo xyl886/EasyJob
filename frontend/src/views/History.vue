@@ -11,15 +11,16 @@
       <el-form :model="searchForm" :inline="true" class="search-form">
         <el-form-item label="任务ID">
           <el-input
-            v-model="searchForm.job_id" 
-            :controls="false"
-            placeholder="输入任务ID" 
-            clearable
-            @clear="handleSearch"
+              v-model="searchForm.job_id"
+              :controls="false"
+              placeholder="输入任务ID"
+              clearable
+              @clear="handleSearch"
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select style="width: 120px" v-model="searchForm.status" placeholder="全部状态" clearable @change="handleSearch">
+          <el-select style="width: 120px" v-model="searchForm.status" placeholder="全部状态" clearable
+                     @change="handleSearch">
             <el-option label="成功" :value="3"/>
             <el-option label="失败" :value="4"/>
           </el-select>
@@ -37,19 +38,19 @@
           border
           stripe
       >
-        <el-table-column prop="JobId" label="任务ID" width="100"/>
-        <el-table-column prop="JobName" label="任务名称"/>
-        <el-table-column prop="RunId" label="运行ID" width="120"/>
-        <el-table-column prop="StartTime" label="开始时间" width="180"/>
-        <el-table-column prop="EndTime" label="结束时间" width="180"/>
-        <el-table-column label="状态" width="100">
+        <el-table-column prop="JobId" label="任务ID" sortable/>
+        <el-table-column prop="JobName" label="任务名称" sortable/>
+        <el-table-column prop="RunId" label="运行ID" sortable/>
+        <el-table-column prop="StartTime" label="开始时间" sortable/>
+        <el-table-column prop="EndTime" label="结束时间" sortable/>
+        <el-table-column label="状态" sortable>
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.Status)">
               {{ getStatusText(row.Status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100">
+        <el-table-column label="操作">
           <template #default="{ row }">
             <el-button
                 size="small"
@@ -96,8 +97,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import {ref, reactive, onMounted} from 'vue'
+import {ElMessage} from 'element-plus'
 import api from '../api'
 
 const loading = ref(false)
@@ -128,7 +129,7 @@ const fetchHistory = async () => {
       job_id: searchForm.job_id || undefined,
       status: searchForm.status
     }
-    
+
     const response = await api.getJobHistory(params.job_id || null, params)
     if (response.data?.code === 200) {
       historyList.value = response.data.data?.items || []
@@ -192,16 +193,21 @@ onMounted(() => {
 
 <style scoped>
 .history-container {
-  padding: 20px;
+  padding: 15px;
 }
 
 .search-form {
   margin-bottom: 20px;
 }
-
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .pagination-container {
-  margin-top: 20px;
-  text-align: right;
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .log-output {

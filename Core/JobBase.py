@@ -176,9 +176,8 @@ class JobBase:
         :param text:
         :return:
         """
-        text = str(text)
         md5 = hashlib.md5()
-        md5.update(text.encode('utf-8'))
+        md5.update(str(text).encode('utf-8'))
         return md5.hexdigest()
 
     @retry(30)

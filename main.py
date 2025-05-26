@@ -176,9 +176,6 @@ async def trigger_job(job_id: JobIdInt):
         job = await get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        if job["Disabled"] == 1:
-            raise HTTPException(status_code=400, detail="Job is disabled")
-        # 启动线程
         thread = threading.Thread(target=start_async_job, args=(job_id,))
         thread.start()
         return SuccessResult(message="Job started in background")
