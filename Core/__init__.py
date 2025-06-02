@@ -140,17 +140,25 @@ def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 *
     except Exception as e:
         job_instance.logger.error(f"Job failed: {str(e)}", exc_info=True)
         raise
-    if DEBUG is False:
-        query = {
-            'level': {'$gte': 30},  # 大于30
-            'job_id': job_id,
-            'run_id': run_id
-        }
-        logs = job_instance.db['log'].find_documents(query=query).dict()
-        title = f"{job_instance.db_name}:{job_instance.job_id}"
-        email_thread = threading.Thread(target=send_email, args=(title, logs))
-        email_thread.start()
-        email_thread.join()
+    title = f"{job_instance.db_name}:{job_instance.job_id}"
+    query = {
+        'level': {'$gte': 30},  # 大于30
+        'job_id': job_id,
+        'run_id': run_id
+    }
+    send_query = {
+        'level': {'$gte': 40},  # 大于30
+        'job_id': job_id,
+        'run_id': run_id
+    }
+    if DEBUG is True:
+        return
+    if job_instance.db['log'].count(query=send_query) <= 0:
+        return
+    logs = job_instance.db['log'].find_documents(query=query).dict()
+    email_thread = threading.Thread(target=send_email, args=(title, logs))
+    email_thread.start()
+    email_thread.join()
 
 
 def auto_import_jobs(base_package=BASE_PACKAGE):
@@ -178,10 +186,11 @@ def auto_import_jobs(base_package=BASE_PACKAGE):
                     print(f"[AutoImport] Failed to import {module_name}: {e}")
                     traceback.print_exc()
     print(f"[AutoImport] Auto import jobs completed: {modules}")
-    print(f"JobBase._registry: {JobBase._registry}")
+    print(f"JobBase.registry: {sorted(JobBase._registry.keys())}")
 
 
 def save_jobs():
+    # 保存任务
     existing_job_ids = [job['JobId'] for job in Job_c.find_documents()]
     for job_id, job_class in JobBase._registry.items():
         job_name = str(job_class.__name__)

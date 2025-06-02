@@ -111,10 +111,10 @@ async def execute_job_core(job_id: int):
         JobClass=job.get("JobClass"),
         Description=job.get("Description"),
         Status=JobStatus.COMPLETED,
-        RunId=100000,
-        Output="",
+        RunId=None,
+        Output='',
         StartTime='',
-        EndTime="")
+        EndTime='')
     try:
         job_id = job.get("JobId")
         history.StartTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))

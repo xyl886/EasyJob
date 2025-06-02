@@ -11,7 +11,8 @@ from typing import Union, Tuple, Callable, Optional, Dict, List
 
 import requests
 from loguru import logger
-from requests import RequestException
+from requests import RequestException, ReadTimeout, ConnectTimeout
+from requests.models import HTTPError
 
 from .Config import content_type_ext
 from .MongoDB import MongoDB
@@ -21,7 +22,7 @@ def retry(
         retries: int = 5,  # 重试次数
         delay: Union[int, float] = 1,  # 延迟时间
         backoff: Union[int, float] = 2,  # 延迟倍数
-        exceptions: Tuple[Exception] = (RequestException,),  # 捕获的异常类型
+        exceptions: Tuple[Exception] = (RequestException, ReadTimeout, HTTPError, ConnectTimeout),  # 捕获的异常类型
         log_args: bool = True  # 是否记录参数
 ):
     def decorator(func: Callable):
@@ -197,7 +198,7 @@ class JobBase:
             dump_file_name: Optional[str] = None,
             res_type: str = 'text',
             force_refresh: bool = False,
-            raise_for_status: bool = False,
+            raise_for_status: bool = True,
             validate_str_list: Optional[List[str]] = None
     ) -> Union[str, dict, bytes]:
         """
@@ -217,7 +218,7 @@ class JobBase:
             dump_file_name (str, optional): 缓存文件名，若存在则优先读取缓存。
             res_type (str, optional): 返回类型，可选 'text'（文本）、'json'（字典）、'content'（二进制），默认为 'text'。
             force_refresh (bool, optional): 强制跳过dump重新请求，默认为 False。
-            raise_for_status (bool, optional): 是否在 HTTP 错误码时抛出异常，默认为 False。
+            raise_for_status (bool, optional): 是否在 HTTP 错误码时抛出异常，默认为 True。
             validate_str_list(str,optional): 根据传入的str，对响应进行校验，决定是否重试
         Returns:
             str/dict/bytes: 根据 res_type 返回响应内容。
@@ -259,17 +260,21 @@ class JobBase:
                     response.encoding = response.apparent_encoding
             except requests.exceptions.RequestException as e:
                 self.logger.error(f"request failed: {e}")  # 可选日志记录
-                raise  # 触发 retry 装饰器重试
-            if res_type == 'text':
-                res = response.text
-            elif res_type == 'json':
-                res = response.json()
-            elif res_type == 'content':
-                res = response.content
-            else:
-                error = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
-                raise error
-            if dump_file_name is not None:
+                raise e  # 触发 retry 装饰器重试
+            try:
+                if res_type == 'text':
+                    res = response.text
+                elif res_type == 'json':
+                    res = response.json()
+                elif res_type == 'content':
+                    res = response.content
+                else:
+                    error = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
+                    raise error
+            except Exception as e:
+                error = f"failed to parse the response: {e}, res: \n{res}"
+                self.logger.error(error)
+            if dump_file_name is not None and res is not None:
                 try:
                     self.dump(res, file_name=dump_file_name, res_type=res_type)  # 假设 dump 方法能处理不同类型数据
                 except Exception as e:
@@ -299,7 +304,6 @@ class JobBase:
             raise ValueError("file_name cannot be None")
         if res_text is None:
             raise ValueError("res_text cannot be None")
-
         # 自动创建父目录（如果不存在）
         save_folder = self.folder + '\\' + self.date
         os.makedirs(save_folder, exist_ok=True)
@@ -347,18 +351,20 @@ class JobBase:
 
             # 根据文件扩展名推断内容类型
             ext = os.path.splitext(file_name)[1].lower()
-
+            # 检验文件是否存在
+            if not os.path.exists(save_path):
+                return None
+            self.logger.info(f'read cache {file_name}')
             if ext == '.json':
                 import json
                 with open(save_path, "r", encoding="utf-8") as f:
                     return json.load(f)
-            elif ext in content_type_ext.values().lower():  # 图片等二进制文件
+            elif ext.lower() in [v.lower() for v in content_type_ext.values()]:
                 with open(save_path, "rb") as f:
                     return f.read()
             else:  # 默认按文本处理
                 with open(save_path, "r", encoding="utf-8") as f:
                     return f.read()
-
         except FileNotFoundError:
             self.logger.info(f"File {file_name} not found")
             return None
