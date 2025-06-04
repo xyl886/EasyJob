@@ -13,8 +13,9 @@
         <el-form-item label="任务名称">
           <el-input v-model="searchForm.job_name" placeholder="输入任务名称" clearable @clear="handleSearch"/>
         </el-form-item>
-        <el-form-item label="状态" >
-          <el-select style="width: 120px" v-model="searchForm.status" placeholder="全部状态" clearable @change="handleSearch">
+        <el-form-item label="状态">
+          <el-select style="width: 120px" v-model="searchForm.status" placeholder="全部状态" clearable
+                     @change="handleSearch">
             <el-option label="启用" :value="0"/>
             <el-option label="禁用" :value="1"/>
           </el-select>
@@ -254,6 +255,7 @@ const handleSearch = () => {
 const resetSearch = () => {
   searchForm.job_name = ''
   searchForm.status = null
+  pagination.page_size = 10
   handleSearch()
 }
 
@@ -267,10 +269,10 @@ const fetchJobs = async () => {
       status: searchForm.status
     }
     console.log('fetchJobs params', params)
-    
+
     const response = await jobStore.fetchJobs(params)
     console.log('fetchJobs response:', response)
-    
+
     // 处理后端返回的数据
     if (response?.data) {
       // 如果后端返回了分页信息，则使用后端的数据

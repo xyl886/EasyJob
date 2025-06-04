@@ -155,6 +155,7 @@ const handleSearch = () => {
 const resetSearch = () => {
   searchForm.job_id = null
   searchForm.status = null
+  pagination.page_size = 10
   handleSearch()
 }
 

@@ -111,7 +111,7 @@ async def execute_job_core(job_id: int):
         JobClass=job.get("JobClass"),
         Description=job.get("Description"),
         Status=JobStatus.COMPLETED,
-        RunId=None,
+        RunId=100000,
         Output='',
         StartTime='',
         EndTime='')
@@ -127,3 +127,5 @@ async def execute_job_core(job_id: int):
         history.Status = JobStatus.FAILED
     history.EndTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     History_c.save_dict_to_collection(history.dict(), 'RunId')
+
+
