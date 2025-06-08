@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import sys
+import threading
 import time
 from functools import wraps
 from typing import Union, Tuple, Callable, Optional, Dict, List
@@ -66,6 +67,7 @@ def retry(
                         f"Error: {unexpected_error}"
                     )
                     raise unexpected_error
+            return None
 
         return wrapper
 
@@ -76,6 +78,7 @@ class MongoDBHandler:
     """自定义MongoDB日志处理器（仅记录ERROR及以上级别）
         self.db = MongoDB(db_name=self.db_name, log_enabled=False)
         self.log_handler = MongoDBHandler(db=self.db, db_name=self.db_name, job_id=self.job_id, run_id=self.run_id)
+        self.logger = self.log_handler.logger
     """
 
     def __init__(self, **kwargs):
@@ -188,6 +191,7 @@ class JobBase:
             url: str,
             method: str = 'GET',
             params: Optional[Dict] = None,
+            data: Optional[Dict] = None,
             json_data: Optional[Dict] = None,
             headers: Optional[Dict[str, str]] = None,
             cookies: Optional[Dict[str, str]] = None,
@@ -197,7 +201,7 @@ class JobBase:
             proxies: Optional[Dict[str, str]] = None,
             dump_file_name: Optional[str] = None,
             res_type: str = 'text',
-            force_refresh: bool = False,
+            read_dump: bool = True,
             raise_for_status: bool = True,
             validate_str_list: Optional[List[str]] = None
     ) -> Union[str, dict, bytes]:
@@ -208,6 +212,7 @@ class JobBase:
             url (str): 目标 URL 地址。
             method(str): get, post
             params(dict): dict
+            data(dict): dict
             json_data(dict): json
             headers (dict, optional): 自定义请求头，默认为 None。
             cookies (dict, optional): 自定义 Cookies，默认为 None。
@@ -217,7 +222,7 @@ class JobBase:
             proxies (dict, optional): 代理配置（如 {'http': 'http://10.10.1.10:3128'}）。
             dump_file_name (str, optional): 缓存文件名，若存在则优先读取缓存。
             res_type (str, optional): 返回类型，可选 'text'（文本）、'json'（字典）、'content'（二进制），默认为 'text'。
-            force_refresh (bool, optional): 强制跳过dump重新请求，默认为 False。
+            read_dump (bool, optional): 是否读取缓存，默认为 True。
             raise_for_status (bool, optional): 是否在 HTTP 错误码时抛出异常，默认为 True。
             validate_str_list(str,optional): 根据传入的str，对响应进行校验，决定是否重试
         Returns:
@@ -232,15 +237,16 @@ class JobBase:
             validate_str_list = []
         # 尝试读取缓存文件（当不强制刷新时）
         res = None
-        if not force_refresh and dump_file_name is not None:
+        if read_dump and dump_file_name is not None:
             res = self.get_dump(file_name=dump_file_name)
         # 若缓存不存在或强制刷新，则发起请求
-        if res is None or force_refresh:
+        if res is None or not read_dump:
             try:
                 response = requests.request(
                     method,
                     url,
                     params=params,
+                    data=data,
                     json=json_data,
                     headers=headers,
                     cookies=cookies,
@@ -285,7 +291,7 @@ class JobBase:
         for each_validate_str in validate_str_list:
             if each_validate_str not in str(res):
                 self.logger.info(f"url: {url} str: {each_validate_str} request failed，on retry...{res}")
-                raise requests.exceptions.RequestException("请求失败")
+                raise requests.exceptions.RequestException(f"请求失败, {each_validate_str} not in {str(res)}")
         return res
 
     def dump(self, res_text, file_name: str, res_type: str = "text"):
@@ -297,7 +303,7 @@ class JobBase:
             file_name: 完整的文件保存路径（如 `data/dump_2023.txt`）
             res_type: 内容类型，可选值：
                 - "text": 文本内容（默认）
-                - "json": JSON对象（会自动转换为字符串）
+                - "json": JSON对象
                 - "content": 二进制内容（如图片等）
         """
         if file_name is None:
@@ -305,9 +311,11 @@ class JobBase:
         if res_text is None:
             raise ValueError("res_text cannot be None")
         # 自动创建父目录（如果不存在）
-        save_folder = self.folder + '\\' + self.date
-        os.makedirs(save_folder, exist_ok=True)
-
+        save_folder = os.path.join(self.folder, self.date)
+        file_path = os.path.join(save_folder, file_name)
+        file_dir = os.path.dirname(file_path)
+        if file_dir:  # 确保目录路径非空
+            os.makedirs(file_dir, exist_ok=True)
         # 处理不同内容类型
         file_path = os.path.join(save_folder, file_name)
         if res_type == "text":
@@ -339,18 +347,29 @@ class JobBase:
             - 其他：返回文本内容
 
         Raises:
-            FileNotFoundError: 文件不存在时返回None
+            FileNotFoundError: 文件不存在时抛出
+            ValueError: 文件名无效时抛出
         """
-        if file_name is None:
+        # 参数验证
+        if not file_name or not isinstance(file_name, str) or file_name is None:
+            raise ValueError("file_name cannot be empty")
+
+        # 确定日期目录,如果没有传入参数date，则尝试获取子类初始化的date
+        target_date = date or self.date
+        if not target_date:
+            raise ValueError("Date must be provided or set in instance")
+
+        # 构建完整文件路径
+        save_dir = os.path.join(self.folder, target_date)
+        save_path = os.path.join(save_dir, file_name)
+        # 检查文件是否存在
+        if not os.path.exists(save_path):
+            self.logger.warning(f"File not found: {save_path}")
             return None
         try:
-            if date:
-                save_path = self.folder + '\\' + date + '\\' + file_name
-            else:
-                save_path = self.folder + '\\' + self.date + '\\' + file_name
-
-            # 根据文件扩展名推断内容类型
-            ext = os.path.splitext(file_name)[1].lower()
+            # 获取文件扩展名
+            _, ext = os.path.splitext(file_name)
+            ext = ext.lower()  # 统一小写处理
             # 检验文件是否存在
             if not os.path.exists(save_path):
                 return None
@@ -359,12 +378,74 @@ class JobBase:
                 import json
                 with open(save_path, "r", encoding="utf-8") as f:
                     return json.load(f)
-            elif ext.lower() in [v.lower() for v in content_type_ext.values()]:
+            elif ext in [v.lower() for v in content_type_ext.values()]:
                 with open(save_path, "rb") as f:
                     return f.read()
             else:  # 默认按文本处理
                 with open(save_path, "r", encoding="utf-8") as f:
                     return f.read()
-        except FileNotFoundError:
-            self.logger.info(f"File {file_name} not found")
-            return None
+        except Exception as e:
+            self.logger.error(f"Error reading file {save_path}: {str(e)}")
+            raise  # 重新抛出异常
+
+    def flatten_dict(self, nested_dict, parent_key='', separator='_', result=None, key_registry=None):
+        """
+        将多层嵌套字典转换为单层字典，自动处理键名冲突
+
+        参数:
+            nested_dict: 要扁平化的嵌套字典
+            parent_key: 父级键前缀(递归使用)
+            separator: 键名连接符
+            result: 结果字典(递归使用)
+            key_registry: 键名注册表(递归使用)
+
+        返回:
+            扁平化后的单层字典
+        """
+        if result is None:
+            result = {}
+        if key_registry is None:
+            key_registry = {}
+
+        for key, value in nested_dict.items():
+            # 生成新键名
+            new_key = f"{parent_key}{separator}{key}" if parent_key else key
+
+            if isinstance(value, dict):
+                # 递归处理子字典
+                self.flatten_dict(value, new_key, separator, result, key_registry)
+            else:
+                # 处理键名冲突
+                final_key = new_key
+                if new_key in key_registry:
+                    # 更新计数并生成唯一键名
+                    key_registry[new_key] += 1
+                    final_key = f"{new_key}{separator}{key_registry[new_key]}"
+                else:
+                    # 首次出现的键名，注册为0
+                    key_registry[new_key] = 0
+
+                # 添加键值对
+                result[final_key] = value
+
+        return result
+
+
+class JobThread(threading.Thread):
+    """自定义线程，封装异常传递机制"""
+
+    def __init__(self, job_instance):
+        super().__init__()
+        self.job_instance = job_instance
+        self.exc = None  # 保存子线程异常
+
+    def run(self):
+        try:
+            self.job_instance.on_run()
+        except Exception as e:
+            self.exc = e  # 捕获子线程异常
+
+    def join(self, timeout=None):
+        super().join(timeout)
+        if self.exc:
+            raise self.exc  # 在主线程重新抛出异常

@@ -21,7 +21,7 @@ from jinja2 import Template
 
 from .Collection import Job
 from .Email import SMTPConfig, EmailMessageContent, EmailSender
-from .JobBase import JobBase
+from .JobBase import JobBase, JobThread
 from .MongoDB import MongoDB
 from pathlib import Path
 
@@ -66,26 +66,6 @@ except Exception as e:
 db = MongoDB(uri=MONGO_URI, db_name=DB_NAME)
 Job_c = db['Job']
 History_c = db['History']
-
-
-class JobThread(threading.Thread):
-    """自定义线程，封装异常传递机制"""
-
-    def __init__(self, job_instance):
-        super().__init__()
-        self.job_instance = job_instance
-        self.exc = None  # 保存子线程异常
-
-    def run(self):
-        try:
-            self.job_instance.on_run()
-        except Exception as e:
-            self.exc = e  # 捕获子线程异常
-
-    def join(self, timeout=None):
-        super().join(timeout)
-        if self.exc:
-            raise self.exc  # 在主线程重新抛出异常
 
 
 # ✅ 使用示例

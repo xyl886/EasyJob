@@ -4,16 +4,15 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import List
 
 import pymongo.errors
-
 from loguru import logger
 from pymongo import MongoClient
-from typing import List, Union
 
 
 class DocumentList:
-    def __init__(self, documents):
+    def __init__(self, documents: List[dict]):
         """
         初始化 DocumentList 对象
         :param documents: 集合中的文档列表
@@ -60,7 +59,7 @@ class DocumentList:
 
 
 class CollectionWrapper:
-    def __init__(self, db_name, collection, log_enabled=True):
+    def __init__(self, db_name: str, collection, log_enabled=True):
         """
         初始化 CollectionWrapper 对象
         :param db_name: str 数据库名称
@@ -144,7 +143,7 @@ class CollectionWrapper:
                        limit: int = 0,
                        skip: int = 0,
                        distinct_key: str = None,
-                       sort: list = None) -> Union[DocumentList, dict]:
+                       sort: list = None) -> DocumentList | None:
         """
         根据给定的查询条件（query）从指定集合中查找文档。
 
@@ -320,7 +319,7 @@ class CollectionWrapper:
                 logger.info(f"{operation_result}, {update_data}")
                 return result.modified_count  # 返回修改的记录数
             else:
-                logger.info(f"{collection_info} 没有找到匹配的记录，不进行更新操作")
+                logger.info(f"{collection_info} 没有找到匹配的记录, 不进行更新操作")
                 return 0  # 返回0表示没有更新任何记录
         except pymongo.errors.PyMongoError as e:
             logger.error(f"更新数据失败: {str(e)}")
@@ -330,7 +329,7 @@ class CollectionWrapper:
             raise
 
     @logger.catch
-    def save_dict_to_collection(self, data_dict, query_key: str = None):
+    def save_dict_to_collection(self, data_dict: dict, query_key: str = None):
         """
         根据传入的字典的某个key的值进行查询，判断是否已经存在相同记录，
         如果存在则更新，否则插入新记录。
@@ -397,7 +396,7 @@ class CollectionWrapper:
             logger.error(f"保存数据失败: {e}")
 
     @logger.catch
-    def save_dict_list_to_collection(self, dict_list, query_key: str = None):
+    def save_dict_list_to_collection(self, dict_list: List[dict], query_key: str = None):
         """
         将字典列表批量保存至 MongoDB。
         """
@@ -503,7 +502,7 @@ class CollectionWrapper:
                 recycle_bin_collection = MongoDB(db_name=recycle_db)[recycle_collection_name]
 
                 # 将要删除的文档移至回收站集合
-                recycle_bin_collection.save_dict_list_to_collection(documents_to_delete)
+                recycle_bin_collection.save_dict_list_to_collection(dict_list=documents_to_delete)
                 logger.info(
                     f"已将 {len(documents_to_delete)} 个文档移至回收站 {recycle_db}:{recycle_collection_name}。")
 
@@ -518,7 +517,7 @@ class CollectionWrapper:
                     remaining_documents = self.collection.count_documents({})
                     if remaining_documents == 0:
                         self.collection.drop()
-                        logger.info(f"集合 {self.collection_name} 已删除，因为它是空的。")
+                        logger.info(f"集合 {self.collection_name} 已删除, 因为它是空的。")
 
             return result.deleted_count
         except Exception as e:
@@ -575,7 +574,7 @@ class MongoDB:
         try:
             collection_stats = collection.estimated_document_count()
             if self.log_enabled:
-                logger.info(f"成功连接到集合 {self.db_name}:{collection_name}，当前文档数: {collection_stats}")
+                logger.info(f"成功连接到集合 {self.db_name}:{collection_name}, 当前文档数: {collection_stats}")
         except Exception as e:
             logger.error(f"无法连接到集合 {self.db_name}:{collection_name}: {e}")
             raise
@@ -598,7 +597,7 @@ class MongoDB:
             self._handle_connection_error(e)
 
     def _handle_connection_error(self, e):
-        error_msg = f"无法连接到 MongoDB 数据库 ({self.db_name})，请检查以下信息："
+        error_msg = f"无法连接到 MongoDB 数据库 ({self.db_name}), 请检查以下信息："
         if not self.username or not self.password:
             error_msg += "\n- 用户名和/或密码未提供或无效"
         error_msg += f"\n- 主机: {self.host}\n- 端口: {self.port}\n\n详细错误：{str(e)}"
@@ -647,7 +646,7 @@ if __name__ == "__main__":
             'email': 'lisi@example.com'
         }
     ]
-    chapter_list.save_dict_list_to_collection(info)
+    chapter_list.save_dict_list_to_collection(dict_list=info)
     # 查询集合所有数据
     chapter_list.find_documents()
     chapter_list.delete_documents()

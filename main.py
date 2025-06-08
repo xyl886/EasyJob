@@ -32,9 +32,25 @@ observer = Observer()
 
 
 class JobFileHandler(FileSystemEventHandler):
+    def __init__(self):
+        self.last_trigger = 0  # 防抖计时
+
     def on_modified(self, event):
-        if event.src_path.endswith(MODULE_PATTERN):
-            auto_import_jobs()
+        # 过滤目录和临时文件
+        if event.is_directory or not event.src_path.endswith(MODULE_PATTERN):
+            return
+
+        # 防抖机制（1秒内不重复触发）
+        current_time = time.time()
+        if current_time - self.last_trigger < 1.0:
+            return
+
+        self.last_trigger = current_time
+        print(f"Reloading jobs from {event.src_path}")
+        try:
+            auto_import_jobs()  # 确保此函数线程安全
+        except Exception as e:
+            print(f"Job reload failed: {e}")
 
 
 # 生命周期管理
@@ -219,7 +235,7 @@ async def get_history(
             filters["Status"] = status
         total = await get_job_logs_count(filters=filters)
         page_count = (total + page_size - 1) // page_size
-        items = await get_job_logs(current_page=current_page, page_size=page_size,  filters=filters)
+        items = await get_job_logs(current_page=current_page, page_size=page_size, filters=filters)
         result = {
             "items": items,
             "total": total,

@@ -86,6 +86,12 @@ jobs:
 mongo:
   uri: 'mongodb://localhost:27017' #  mongodb连接uri
   database: 'EasyJob' #  mongodb数据库名
+smtp:
+    host: 'smtp.qq.com' # smtp服务器地址
+    port: 587 # smtp服务器端口
+    user: '' # 邮箱用户名
+    password: '' # 邮箱密码
+    to: '' # 邮件接收者
 ```
 
 ## 自动发现机制

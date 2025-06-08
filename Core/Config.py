@@ -12,6 +12,9 @@ content_type_ext = {
     "image/gif": ".gif",
     "image/webp": ".webp",
     "image/svg+xml": ".svg",
+    "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+    "image/x-icon": ".ico",
 
     # 文档类
     "application/pdf": ".pdf",
@@ -28,12 +31,18 @@ content_type_ext = {
     "application/x-rar-compressed": ".rar",
     "application/x-tar": ".tar",
     "application/gzip": ".gz",
+    "application/x-7z-compressed": ".7z",
 
     # 音视频类
     "audio/mpeg": ".mp3",
     "audio/wav": ".wav",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
+    "video/x-msvideo": ".avi",
+    "video/x-flv": ".flv",
+    "video/webm": ".webm",
+    "video/ogg": ".ogv",
+    "video/3gpp": ".3gp",
 
     # 二进制流类
     "application/octet-stream": ".bin",  # 通用二进制文件
@@ -47,6 +56,5 @@ content_type_ext = {
     "font/woff2": ".woff2",
 
     # 其他
-    "application/json": ".json",  # 虽然常用json()解析，但也可用content
     "application/xml": ".xml"
 }
