@@ -7,12 +7,14 @@
 """
 # Scheduler.py
 import asyncio
+import time
 from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from watchdog.events import FileSystemEventHandler
 
-from . import Job_c, save_jobs
+from Core import Job_c, save_jobs, MODULE_PATTERN, auto_import_jobs
 from .Service import execute_job_core
 
 
@@ -88,3 +90,25 @@ class JobScheduler:
         job = self.scheduler.get_job(f"job_{job_id}")
         if job:
             job.remove()
+
+
+class JobFileHandler(FileSystemEventHandler):
+    def __init__(self):
+        self.last_trigger = 0  # 防抖计时
+
+    def on_modified(self, event):
+        # 过滤目录和临时文件
+        if event.is_directory or not event.src_path.endswith(MODULE_PATTERN):
+            return
+
+        # 防抖机制（1秒内不重复触发）
+        current_time = time.time()
+        if current_time - self.last_trigger < 1.0:
+            return
+
+        self.last_trigger = current_time
+        print(f"Reloading jobs from {event.src_path}")
+        try:
+            auto_import_jobs()  # 确保此函数线程安全
+        except Exception as e:
+            print(f"Job reload failed: {e}")

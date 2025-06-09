@@ -200,6 +200,8 @@ auto_import_jobs()
 __all__ = [
     'BASE_PACKAGE',
     'MODULE_PATTERN',
+    'Job_c',
+    'History_c',
     'run',
     'get_file_path',
     'auto_import_jobs',

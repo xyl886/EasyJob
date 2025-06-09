@@ -12,13 +12,12 @@ from typing import Dict
 from fastapi import FastAPI
 from fastapi import Query
 from starlette.middleware.cors import CORSMiddleware
-from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from Core import auto_import_jobs, MODULE_PATTERN, BASE_PACKAGE
+from Core import BASE_PACKAGE
 from Core.Collection import PageInt, JobIdInt, PageSizeInt
 from Core.Result import *
-from Core.Scheduler import JobScheduler
+from Core.Scheduler import JobScheduler, JobFileHandler
 from Core.Service import *
 
 """
@@ -29,28 +28,6 @@ from Core.Service import *
 job_scheduler = JobScheduler()
 # 创建观察者实例
 observer = Observer()
-
-
-class JobFileHandler(FileSystemEventHandler):
-    def __init__(self):
-        self.last_trigger = 0  # 防抖计时
-
-    def on_modified(self, event):
-        # 过滤目录和临时文件
-        if event.is_directory or not event.src_path.endswith(MODULE_PATTERN):
-            return
-
-        # 防抖机制（1秒内不重复触发）
-        current_time = time.time()
-        if current_time - self.last_trigger < 1.0:
-            return
-
-        self.last_trigger = current_time
-        print(f"Reloading jobs from {event.src_path}")
-        try:
-            auto_import_jobs()  # 确保此函数线程安全
-        except Exception as e:
-            print(f"Job reload failed: {e}")
 
 
 # 生命周期管理
@@ -82,6 +59,16 @@ app.add_middleware(
 
 
 # API路由
+# 统计接口
+@app.get("/statistics", response_model=Result[Dict])
+async def statistics():
+    try:
+        statistics_data = await get_statistics()
+        return SuccessResult(data=statistics_data)
+    except Exception as e:
+        return ErrorResult(message=str(e))
+
+
 @app.post("/jobs/", response_model=Result[Job])
 async def add_job(job: Job):
     try:

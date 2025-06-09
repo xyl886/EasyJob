@@ -55,6 +55,9 @@ const buildQueryString = (params) => {
 }
 
 export default {
+    getStatistics() {
+        return apiClient.get('/statistics')
+    },
     // Job CRUD operations
     getJobs(params = {}) {
         // 确保分页参数存在

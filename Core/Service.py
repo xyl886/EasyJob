@@ -15,7 +15,92 @@ from loguru import logger
 
 import Core
 from Core.Collection import Job, History, JobStatus
-from . import Job_c, History_c
+from Core import Job_c, History_c
+
+
+async def get_statistics(days: int = 7) -> Optional[dict]:
+    from datetime import datetime, timedelta
+    now = datetime.now()
+
+    # 计算一周前的日期
+    one_week_ago = (now - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    # 生成过去一周的日期列表
+    date_list = reversed([
+        (now - timedelta(days=i)).strftime('%Y-%m-%d')
+        for i in range(days)
+    ])
+
+    pipeline = [
+        # 过滤出最近一周的记录
+        {
+            "$match": {
+                "StartTime": {
+                    "$gte": one_week_ago
+                }
+            }
+        },
+        # 将 StartTime 字符串转换为日期对象
+        {
+            "$addFields": {
+                "dateObj": {"$dateFromString": {"dateString": "$StartTime"}}
+            }
+        },
+        # 按日期分组，并计算不同状态的数量
+        {
+            "$group": {
+                "_id": {
+                    "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$dateObj"}}
+                },
+                "running": {
+                    "$sum": {"$cond": [{"$eq": ["$Status", 1]}, 1, 0]}
+                },
+                "failure": {
+                    "$sum": {"$cond": [{"$eq": ["$Status", 2]}, 1, 0]}
+                },
+                "success": {
+                    "$sum": {"$cond": [{"$eq": ["$Status", 3]}, 1, 0]}
+                }
+            }
+        },
+        # 投影出需要的字段
+        {
+            "$project": {
+                "_id": 0,
+                "date": "$_id.date",
+                "running": 1,
+                "failure": 1,
+                "success": 1
+            }
+        },
+        # 按日期升序排序
+        {
+            "$sort": {"date": 1}
+        }
+    ]
+    statistics = History_c.aggregate(pipeline=pipeline)
+    statistics_dict = {stat['date']: stat for stat in statistics}
+    result = [
+        statistics_dict.get(date, {
+            "date": date,
+            "running": 0,
+            "failure": 0,
+            "success": 0
+        })
+        for date in date_list
+    ]
+    total, disabled, running = await asyncio.gather(
+        get_jobs_count(),
+        get_jobs_count({"Disabled": 1}),
+        get_jobs_count({"Disabled": 0})
+    )
+    statistics_data = {
+        "jobsTotal": total,
+        'disabled': disabled,
+        'running': running,
+        "statistics": result
+    }
+    return statistics_data
 
 
 # CRUD操作
@@ -129,3 +214,11 @@ async def execute_job_core(job_id: int):
     History_c.save_dict_to_collection(history.dict(), 'RunId')
 
 
+if __name__ == '__main__':
+    # 获取当前线程的事件循环
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # 运行异步函数
+    loop.run_until_complete(get_statistics())
+    loop.close()
