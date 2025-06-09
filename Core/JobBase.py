@@ -15,8 +15,8 @@ from loguru import logger
 from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
-from .Config import content_type_ext
-from .MongoDB import MongoDB
+from Core.Config import content_type_ext
+from Core.MongoDB import MongoDB
 
 
 def retry(

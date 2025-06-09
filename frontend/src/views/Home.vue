@@ -193,9 +193,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.home {
-  padding: 20px;
-}
 
 .welcome-card {
   margin-bottom: 20px;
@@ -209,7 +206,6 @@ onUnmounted(() => {
 
 .card-content {
   text-align: center;
-  padding: 20px 0;
 }
 
 .action-buttons {

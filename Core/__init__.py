@@ -19,10 +19,10 @@ from typing import List
 
 from jinja2 import Template
 
-from .Collection import Job
-from .Email import SMTPConfig, EmailMessageContent, EmailSender
-from .JobBase import JobBase, JobThread
-from .MongoDB import MongoDB
+from Core.Collection import Job
+from Core.Email import SMTPConfig, EmailMessageContent, EmailSender
+from Core.JobBase import JobBase, JobThread
+from Core.MongoDB import MongoDB
 from pathlib import Path
 
 

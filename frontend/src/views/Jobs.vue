@@ -35,7 +35,7 @@
       >
         <el-table-column prop="JobId" label="任务ID" sortable/>
         <el-table-column prop="JobName" label="任务名称" sortable/>
-        <el-table-column prop="JobClass" label="任务类" sortable/>
+        <el-table-column prop="JobClass" label="任务类" sortable width="300"/>
         <el-table-column prop="Package" label="包名" width="100" sortable/>
         <el-table-column label="Cron表达式" sortable width="250">
           <template #default="{ row }">

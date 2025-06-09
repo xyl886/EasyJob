@@ -15,7 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 from watchdog.events import FileSystemEventHandler
 
 from Core import Job_c, save_jobs, MODULE_PATTERN, auto_import_jobs
-from .Service import execute_job_core
+from Core.Service import execute_job_core
 
 
 class JobScheduler:

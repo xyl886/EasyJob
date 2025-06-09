@@ -1,105 +1,114 @@
 <script setup>
-import {ref} from 'vue'
-import {Menu as IconMenu, Timer, Document, Setting} from '@element-plus/icons-vue'
+import { ref } from 'vue'
+import {
+  Menu as IconMenu,
+  Timer,
+  Document,
+  Setting,
+  Fold,
+  Expand
+} from '@element-plus/icons-vue'
 
 const isCollapse = ref(false)
+
+// 菜单配置数据
+const menuItems = ref([
+  { index: '/', icon: Document, title: '首页' },
+  { index: '/jobs', icon: Timer, title: '任务管理' },
+  { index: '/history', icon: Setting, title: '运行记录' }
+])
+
+const currentYear = new Date().getFullYear()
 </script>
 
 <template>
   <el-container class="app-container">
     <el-aside width="auto">
-      <el-menu
+      <div class="sidebar-container">
+        <el-menu
           default-active="/"
           class="sidebar-menu"
           :collapse="isCollapse"
-          :router="true"
+          router
           background-color="#304156"
           text-color="#bfcbd9"
           active-text-color="#409EFF"
-      >
-        <div class="logo-container">
-          <span v-if="!isCollapse" class="logo-text">EasyJob</span>
-          <el-icon v-else class="logo-icon">
-            <Timer/>
-          </el-icon>
-        </div>
+        >
+          <div class="logo-container" @click="isCollapse = !isCollapse">
+            <el-icon v-if="isCollapse" class="logo-icon">
+              <Timer />
+            </el-icon>
+            <span v-else class="logo-text">EasyJob</span>
+          </div>
 
-        <el-menu-item index="/">
-          <el-icon>
-            <Document/>
-          </el-icon>
-          <template #title>首页</template>
-        </el-menu-item>
-
-        <el-menu-item index="/jobs">
-          <el-icon>
-            <Timer/>
-          </el-icon>
-          <template #title>任务管理</template>
-        </el-menu-item>
-
-        <el-menu-item index="/history">
-          <el-icon>
-            <Setting/>
-          </el-icon>
-          <template #title>运行记录</template>
-        </el-menu-item>
-
-        <div class="collapse-btn" @click="isCollapse = !isCollapse">
-          <el-icon>
-            <IconMenu/>
-          </el-icon>
-        </div>
-      </el-menu>
+          <el-menu-item
+            v-for="item in menuItems"
+            :key="item.index"
+            :index="item.index"
+          >
+            <el-icon>
+              <component :is="item.icon" />
+            </el-icon>
+            <template #title>{{ item.title }}</template>
+          </el-menu-item>
+        </el-menu>
+      </div>
     </el-aside>
 
     <el-container>
       <el-header>
         <div class="header-content">
-          <h2>EasyJob 任务调度平台</h2>
+          <div class="header-left">
+            <div class="collapse-btn" @click="isCollapse = !isCollapse">
+              <el-icon :class="{ 'rotate-icon': isCollapse }">
+                <component :is="isCollapse ? Expand : Fold" />
+              </el-icon>
+            </div>
+          </div>
+
+          <div class="header-center">
+            <h2>EasyJob 任务调度平台</h2>
+          </div>
+
+          <div class="header-right">
+            <!-- 这里可以放置用户信息或其他操作 -->
+          </div>
         </div>
       </el-header>
 
       <el-main>
-        <router-view/>
+        <router-view />
       </el-main>
 
-      <el-footer>
+      <el-footer height="40px">
         <div class="footer-content">
-          <p>© {{ new Date().getFullYear() }} EasyJob 任务调度平台</p>
+          <p>© {{ currentYear }} EasyJob 任务调度平台</p>
         </div>
       </el-footer>
     </el-container>
   </el-container>
 </template>
 
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body {
-  height: 100%;
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
-}
-
-</style>
-
 <style scoped>
 .app-container {
   height: 100vh;
+  display: flex;
 }
 
 .el-aside {
-  transition: width 0.3s;
   background-color: #304156;
+  transition: width 0.3s ease;
+}
+
+.sidebar-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .sidebar-menu {
-  height: 100%;
   border-right: none;
+  flex: 1;
 }
 
 .sidebar-menu:not(.el-menu--collapse) {
@@ -112,31 +121,18 @@ html, body {
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 20px;
-  font-weight: bold;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
 }
 
-.logo-text {
-  margin-left: 10px;
+.logo-container:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .logo-icon {
   font-size: 24px;
-}
-
-.collapse-btn {
-  position: absolute;
-  bottom: 20px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: #bfcbd9;
-  cursor: pointer;
-  padding: 10px 0;
-}
-
-.collapse-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .el-header {
@@ -144,35 +140,73 @@ html, body {
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  height: 60px;
 }
 
 .header-content {
-  align-items: center; /* 垂直居中 */
+  display: flex;
+  align-items: center;
   width: 100%;
-  justify-content: space-between;
+  height: 100%;
 }
 
-.header-content h2 {
-  margin: 0; /* 清除默认边距 */
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.collapse-btn {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #5a5e66;
+  transition: all 0.3s;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.collapse-btn:hover {
+  background-color: #f5f7fa;
+}
+
+.collapse-btn .el-icon {
+  margin-right: 6px;
+  font-size: 18px;
+  transition: transform 0.3s;
+}
+
+.collapse-btn .rotate-icon {
+  transform: rotate(180deg);
+}
+
+.collapse-btn span {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .el-main {
   background-color: #f0f2f5;
-  padding: 0;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .el-footer {
-  background-color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 40px !important;
-}
-
-.footer-content {
+  background-color: #fff;
+  border-top: 1px solid #eaecef;
   color: #666;
-  font-size: 14px;
+  font-size: 13px;
 }
 </style>
