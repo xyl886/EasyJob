@@ -23,7 +23,7 @@ async def get_statistics(days: int = 7) -> Optional[dict]:
     now = datetime.now()
 
     # 计算一周前的日期
-    one_week_ago = (now - timedelta(days=days)).strftime('%Y-%m-%d')
+    day_ago = (now - timedelta(days=days)).strftime('%Y-%m-%d')
 
     # 生成过去一周的日期列表
     date_list = reversed([
@@ -36,7 +36,7 @@ async def get_statistics(days: int = 7) -> Optional[dict]:
         {
             "$match": {
                 "StartTime": {
-                    "$gte": one_week_ago
+                    "$gte": day_ago
                 }
             }
         },
@@ -53,13 +53,13 @@ async def get_statistics(days: int = 7) -> Optional[dict]:
                     "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$dateObj"}}
                 },
                 "running": {
-                    "$sum": {"$cond": [{"$eq": ["$Status", 1]}, 1, 0]}
+                    "$sum": {"$cond": [{"$eq": ["$Status", JobStatus.RUNNING]}, 1, 0]}
                 },
                 "failure": {
-                    "$sum": {"$cond": [{"$eq": ["$Status", 2]}, 1, 0]}
+                    "$sum": {"$cond": [{"$eq": ["$Status", JobStatus.FAILED]}, 1, 0]}
                 },
                 "success": {
-                    "$sum": {"$cond": [{"$eq": ["$Status", 3]}, 1, 0]}
+                    "$sum": {"$cond": [{"$eq": ["$Status", JobStatus.COMPLETED]}, 1, 0]}
                 }
             }
         },
@@ -195,7 +195,7 @@ async def execute_job_core(job_id: int):
         Package=job.get("Package"),
         JobClass=job.get("JobClass"),
         Description=job.get("Description"),
-        Status=JobStatus.COMPLETED,
+        Status=JobStatus.RUNNING,
         RunId=100000,
         Output='',
         StartTime='',
@@ -205,7 +205,10 @@ async def execute_job_core(job_id: int):
         history.StartTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
         run_id = await get_max_RunId()
         history.RunId = run_id
+        history.Status = JobStatus.RUNNING
+        History_c.save_dict_to_collection(history.dict(), 'RunId')
         Core.run(job_id=job_id, run_id=run_id)
+        history.Status = JobStatus.COMPLETED
     except Exception as e:
         logger.error(f"Job execution failed: {str(e)}")
         history.Output = f"Job execution failed: {str(e)}"

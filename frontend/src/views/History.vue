@@ -179,12 +179,26 @@ const showLogDetails = (log) => {
 
 // 获取状态类型
 const getStatusType = (status) => {
-  return status === 3 ? 'success' : 'danger'
+  switch (status) {
+    case 3:
+      return 'success'
+    case 4:
+      return 'danger'
+    default:
+      return 'warning'
+  }
 }
 
 // 获取状态文本
 const getStatusText = (status) => {
-  return status === 3 ? '成功' : '失败'
+  switch (status) {
+    case 3:
+      return '成功'
+    case 4:
+      return '失败'
+    default:
+      return '运行中'
+  }
 }
 
 onMounted(() => {
@@ -200,11 +214,13 @@ onMounted(() => {
 .search-form {
   margin-bottom: 20px;
 }
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+
 .pagination-container {
   margin-top: 10px;
   display: flex;

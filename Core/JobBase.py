@@ -16,6 +16,7 @@ from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
 from Core.Config import content_type_ext
+from Core.FileLockManager import FileLockManager
 from Core.MongoDB import MongoDB
 
 
@@ -167,6 +168,7 @@ class JobBase:
         self.db = MongoDB(db_name=self.db_name, log_enabled=kwargs.get('log_enabled', False))
         self.log_handler = MongoDBHandler(db=self.db, db_name=self.db_name, job_id=self.job_id, run_id=self.run_id)
         self.logger = self.log_handler.logger
+        self.log = self.log_handler.logger
         if not hasattr(self, 'folder'):
             raise ValueError(f"Folder not found in {self.__class__.__name__} job_id:{self.job_id}")
 
@@ -318,19 +320,21 @@ class JobBase:
             os.makedirs(file_dir, exist_ok=True)
         # 处理不同内容类型
         file_path = os.path.join(save_folder, file_name)
-        if res_type == "text":
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(str(res_text))
-        elif res_type == "json":
-            import json
-            with open(file_path, "w", encoding="utf-8", errors="replace") as f:
-                json.dump(res_text, f, ensure_ascii=False, indent=2)
-        elif res_type == "content":
-            with open(file_path, "wb") as f:
-                f.write(res_text)
-        else:
-            raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
-        self.logger.info(f'{file_name} saved_to {save_folder}')
+        lock = FileLockManager.get_lock(file_path)  # 获取该路径的专属锁
+        with lock:
+            if res_type == "text":
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(str(res_text))
+            elif res_type == "json":
+                import json
+                with open(file_path, "w", encoding="utf-8", errors="replace") as f:
+                    json.dump(res_text, f, ensure_ascii=False, indent=2)
+            elif res_type == "content":
+                with open(file_path, "wb") as f:
+                    f.write(res_text)
+            else:
+                raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
+            self.logger.info(f'{file_name} saved_to {save_folder}')
 
     def get_dump(self, file_name: str, date=None):
         """
@@ -374,28 +378,38 @@ class JobBase:
             if not os.path.exists(save_path):
                 return None
             self.logger.info(f'read cache {file_name}')
-            if ext == '.json':
-                import json
-                with open(save_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            elif ext in [v.lower() for v in content_type_ext.values()]:
-                with open(save_path, "rb") as f:
-                    return f.read()
-            else:  # 默认按文本处理
-                with open(save_path, "r", encoding="utf-8") as f:
-                    return f.read()
+            lock = FileLockManager.get_lock(save_path)  # 获取该路径的专属锁
+            with lock:
+                if ext == '.json':
+                    import json
+                    with open(save_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                elif ext in [v.lower() for v in content_type_ext.values()]:
+                    with open(save_path, "rb") as f:
+                        return f.read()
+                else:  # 默认按文本处理
+                    with open(save_path, "r", encoding="utf-8") as f:
+                        return f.read()
         except Exception as e:
             self.logger.error(f"Error reading file {save_path}: {str(e)}")
             raise  # 重新抛出异常
 
-    def flatten_dict(self, nested_dict, parent_key='', separator='_', result=None, key_registry=None):
+    def flatten_dict(self,
+                     nested_dict,
+                     parent_key='',
+                     key_separator='_',
+                     value_separator=',',
+                     result=None,
+                     key_registry=None
+                     ) -> dict:
         """
         将多层嵌套字典转换为单层字典，自动处理键名冲突
 
         参数:
             nested_dict: 要扁平化的嵌套字典
             parent_key: 父级键前缀(递归使用)
-            separator: 键名连接符
+            key_separator: 键名连接符
+            value_separator: 值连接符
             result: 结果字典(递归使用)
             key_registry: 键名注册表(递归使用)
 
@@ -409,24 +423,27 @@ class JobBase:
 
         for key, value in nested_dict.items():
             # 生成新键名
-            new_key = f"{parent_key}{separator}{key}" if parent_key else key
+            new_key = f"{parent_key}{key_separator}{key}" if parent_key else key
 
             if isinstance(value, dict):
                 # 递归处理子字典
-                self.flatten_dict(value, new_key, separator, result, key_registry)
+                self.flatten_dict(value, new_key, key_separator, value_separator, result, key_registry)
             else:
                 # 处理键名冲突
                 final_key = new_key
                 if new_key in key_registry:
                     # 更新计数并生成唯一键名
                     key_registry[new_key] += 1
-                    final_key = f"{new_key}{separator}{key_registry[new_key]}"
+                    final_key = f"{new_key}{key_separator}{key_registry[new_key]}"
                 else:
                     # 首次出现的键名，注册为0
                     key_registry[new_key] = 0
 
                 # 添加键值对
-                result[final_key] = value
+                if isinstance(value, list):
+                    result[final_key] = value_separator.join(value)
+                else:
+                    result[final_key] = value
 
         return result
 
