@@ -14,16 +14,12 @@ import sys
 import threading
 import time
 import traceback
-
-from typing import List
-
-from jinja2 import Template
+from pathlib import Path
 
 from Core.Collection import Job
-from Core.Email import SMTPConfig, EmailMessageContent, EmailSender
+from Core.Email import *
 from Core.JobBase import JobBase, JobThread
 from Core.MongoDB import MongoDB
-from pathlib import Path
 
 
 def get_file_path(current_file, marker=""):
@@ -97,7 +93,7 @@ def send_email(title: str, logs: List[dict] = None):
     sender.send(email_content)
 
 
-def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 6):
+def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 7):
     """
     运行指定任务
     Run specified job

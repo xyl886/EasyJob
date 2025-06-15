@@ -7,6 +7,7 @@ import os
 import sys
 import threading
 import time
+from contextlib import ContextDecorator
 from functools import wraps
 from typing import Union, Tuple, Callable, Optional, Dict, List
 
@@ -16,7 +17,8 @@ from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
 from Core.Config import content_type_ext
-from Core.FileLockManager import FileLockManager
+from Core.EntityBase import EntityBase
+from Core.FileLock import FileLock
 from Core.MongoDB import MongoDB
 
 
@@ -131,7 +133,45 @@ class MongoDBHandler:
         self.logger = logger.bind(logger_name=f"{self.db_name}.{self.job_id}")
 
 
-class JobBase:
+class JobContext(ContextDecorator):
+    def __init__(self, job_instance):
+        self.job = job_instance
+        self.previous = EntityBase.get_current_job()  # 使用安全访问方法
+
+    def __enter__(self):
+        EntityBase.set_current_job(self.job)  # 使用安全设置方法
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        EntityBase.set_current_job(self.previous)
+        return False
+
+
+def protect_on_run(on_run_method):
+    """装饰器：自动为on_run方法添加上下文保护"""
+
+    @wraps(on_run_method)
+    def wrapper(self, *args, **kwargs):
+        with JobContext(self):
+            return on_run_method(self, *args, **kwargs)
+        return None
+
+    return wrapper
+
+
+class JobBaseMeta(type):
+    """元类：自动为子类的on_run方法添加保护"""
+
+    def __new__(cls, name, bases, attrs):
+        if name != "JobBase" and "on_run" not in attrs:
+            raise TypeError(f"Job subclass {name} must implement 'on_run' method")
+        # 装饰当前类定义的on_run
+        if "on_run" in attrs:
+            attrs["on_run"] = protect_on_run(attrs["on_run"])
+        return super().__new__(cls, name, bases, attrs)
+
+
+class JobBase(metaclass=JobBaseMeta):
     """任务基类"""
     _registry = {}
 
@@ -140,16 +180,15 @@ class JobBase:
         super().__init_subclass__(**kwargs)
         if hasattr(cls, 'job_id'):
             # 将 job_id 转换为可迭代对象（支持列表、元组、集合或单个值）
+            if not hasattr(cls, 'job_id'):
+                raise ValueError(f"{cls.__name__} must define 'job_id' attribute")
             job_ids = cls.job_id
-            if job_ids is None:
-                raise ValueError(f"job_id not found in {cls.__name__}")
             if not isinstance(job_ids, (list, tuple, set)):
                 job_ids = [job_ids]
             # 遍历所有 job_id 并注册
             for job_id in job_ids:
                 if job_id in JobBase._registry:
-                    print(f"Job {job_id} {cls.__name__} already registered, skipping...")
-                    pass
+                    raise ValueError(f"JobId {job_id} already registered by {JobBase._registry[job_id].__name__}")
                 JobBase._registry[job_id] = cls
         # 处理 folder 路径的代码保持不变
         if hasattr(cls, 'folder'):
@@ -163,6 +202,7 @@ class JobBase:
     def __init__(self, *args, **kwargs):
         self.job_id = kwargs.get('job_id')
         self.run_id = kwargs.get('run_id')
+        self.InsertUpdateTime = str(datetime.datetime.now())
         self.db_name = self.__class__.__name__
         self.default_log_level_no = logging.INFO
         self.db = MongoDB(db_name=self.db_name, log_enabled=kwargs.get('log_enabled', False))
@@ -171,10 +211,12 @@ class JobBase:
         self.log = self.log_handler.logger
         if not hasattr(self, 'folder'):
             raise ValueError(f"Folder not found in {self.__class__.__name__} job_id:{self.job_id}")
+        if not hasattr(self, 'date'):
+            self.date = str(datetime.datetime.now().strftime("%Y-%m-%d"))
 
     def on_run(self):
-        """任务执行入口，需要子类实现"""
-        raise NotImplementedError("Subclasses must implement this method")
+        """任务执行入口，子类重写此方法"""
+        raise NotImplementedError("Subclasses must implement the on_run method")
 
     def md5_encrypt(self, text):
         """
@@ -320,7 +362,7 @@ class JobBase:
             os.makedirs(file_dir, exist_ok=True)
         # 处理不同内容类型
         file_path = os.path.join(save_folder, file_name)
-        lock = FileLockManager.get_lock(file_path)  # 获取该路径的专属锁
+        lock = FileLock.get_lock(file_path)  # 获取该路径的专属锁
         with lock:
             if res_type == "text":
                 with open(file_path, "w", encoding="utf-8") as f:
@@ -378,7 +420,7 @@ class JobBase:
             if not os.path.exists(save_path):
                 return None
             self.logger.info(f'read cache {file_name}')
-            lock = FileLockManager.get_lock(save_path)  # 获取该路径的专属锁
+            lock = FileLock.get_lock(save_path)  # 获取该路径的专属锁
             with lock:
                 if ext == '.json':
                     import json
