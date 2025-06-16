@@ -16,33 +16,33 @@
         v-loading="jobStore.loading"
       >
         <el-form-item label="任务ID" prop="JobId">
-          <el-input-number 
-            v-model="jobForm.JobId" 
-            :min="100000" 
-            :max="999999" 
+          <el-input-number
+            v-model="jobForm.JobId"
+            :min="100000"
+            :max="999999"
             :disabled="isEdit"
           />
-          <div class="form-help">6位数字ID，范围100000-999999</div>
+          <div class="form-help">6位数字ID，范围100000-9999999</div>
         </el-form-item>
-        
+
         <el-form-item label="任务名称" prop="JobName">
           <el-input v-model="jobForm.JobName" />
         </el-form-item>
-        
+
         <el-form-item label="任务类" prop="JobClass">
           <el-input v-model="jobForm.JobClass" />
           <div class="form-help">任务对应的类名</div>
         </el-form-item>
-        
+
         <el-form-item label="包名" prop="Package">
           <el-input v-model="jobForm.Package" />
           <div class="form-help">任务所在的包名，例如：Job.MyTask</div>
         </el-form-item>
-        
+
         <el-form-item label="描述" prop="Description">
           <el-input v-model="jobForm.Description" type="textarea" :rows="3" />
         </el-form-item>
-        
+
         <el-form-item label="状态" prop="Disabled">
           <el-radio-group v-model="jobForm.Disabled">
             <el-radio :label="0">启用</el-radio>
@@ -53,27 +53,27 @@
           <el-input v-model="jobForm.Minute" />
           <div class="form-help">例如：*/5 表示每5分钟，0-30 表示0到30分钟，留空表示每分钟</div>
         </el-form-item>
-        
+
         <el-form-item label="小时" prop="Hour">
           <el-input v-model="jobForm.Hour" />
           <div class="form-help">例如：9-17 表示上午9点到下午5点，*/2 表示每2小时</div>
         </el-form-item>
-        
+
         <el-form-item label="日" prop="DayOfMonth">
           <el-input v-model="jobForm.DayOfMonth" />
           <div class="form-help">例如：1,15 表示每月1号和15号</div>
         </el-form-item>
-        
+
         <el-form-item label="月" prop="MonthOfYear">
           <el-input v-model="jobForm.MonthOfYear" />
           <div class="form-help">例如：1-6 表示1月到6月</div>
         </el-form-item>
-        
+
         <el-form-item label="周" prop="DayOfWeek">
           <el-input v-model="jobForm.DayOfWeek" />
           <div class="form-help">例如：1-5 表示周一到周五，6,0 表示周六和周日</div>
         </el-form-item>
-        
+
         <el-form-item>
           <el-button type="primary" @click="submitForm">保存</el-button>
           <el-button @click="resetForm">重置</el-button>
@@ -105,8 +105,8 @@ const defaultFormData = {
   Package: '',
   Description: '',
   Disabled: 0,
-  Minute: '*',
-  Hour: '*',
+  Minute: '0',
+  Hour: '0',
   DayOfMonth: '*',
   MonthOfYear: '*',
   DayOfWeek: '?'
@@ -119,7 +119,7 @@ const jobForm = reactive({ ...defaultFormData })
 const rules = reactive({
   JobId: [
     { required: true, message: '请输入任务ID', trigger: 'blur' },
-    { type: 'number', min: 100000, max: 999999, message: '任务ID必须是6位数字', trigger: 'blur' }
+    { type: 'number', min: 100000, max: 9999999, message: '任务ID必须是6位数字', trigger: 'blur' }
   ],
   JobName: [
     { required: true, message: '请输入任务名称', trigger: 'blur' },
@@ -134,33 +134,33 @@ const rules = reactive({
     { pattern: /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*[a-z0-9_]*$/, message: '包名格式不正确', trigger: 'blur' }
   ],
   Minute: [
-    { pattern: /^(\*|\?|(\*\/)?[0-5]?[0-9](-[0-5]?[0-9])?(,[0-5]?[0-9](-[0-5]?[0-9])?)*|([0-5]?[0-9]-[0-5]?[0-9])(\/[0-9]+)?(,([0-5]?[0-9]-[0-5]?[0-9])(\/[0-9]+)?)*)$/, 
-      message: '分钟格式不正确', 
-      trigger: 'blur' 
+    { pattern: /^(\*|\?|(\*\/)?[0-5]?[0-9](-[0-5]?[0-9])?(,[0-5]?[0-9](-[0-5]?[0-9])?)*|([0-5]?[0-9]-[0-5]?[0-9])(\/[0-9]+)?(,([0-5]?[0-9]-[0-5]?[0-9])(\/[0-9]+)?)*)$/,
+      message: '分钟格式不正确',
+      trigger: 'blur'
     }
   ],
   Hour: [
-    { pattern: /^(\*|\?|(\*\/)?([0-9]|[0-1][0-9]|2[0-3])(-([0-9]|[0-1][0-9]|2[0-3]))?(,([0-9]|[0-1][0-9]|2[0-3])(-([0-9]|[0-1][0-9]|2[0-3]))?)*|(([0-9]|[0-1][0-9]|2[0-3])-([0-9]|[0-1][0-9]|2[0-3]))(\/[0-9]+)?(,(([0-9]|[0-1][0-9]|2[0-3])-([0-9]|[0-1][0-9]|2[0-3]))(\/[0-9]+)?)*)$/, 
-      message: '小时格式不正确', 
-      trigger: 'blur' 
+    { pattern: /^(\*|\?|(\*\/)?([0-9]|[0-1][0-9]|2[0-3])(-([0-9]|[0-1][0-9]|2[0-3]))?(,([0-9]|[0-1][0-9]|2[0-3])(-([0-9]|[0-1][0-9]|2[0-3]))?)*|(([0-9]|[0-1][0-9]|2[0-3])-([0-9]|[0-1][0-9]|2[0-3]))(\/[0-9]+)?(,(([0-9]|[0-1][0-9]|2[0-3])-([0-9]|[0-1][0-9]|2[0-3]))(\/[0-9]+)?)*)$/,
+      message: '小时格式不正确',
+      trigger: 'blur'
     }
   ],
   DayOfMonth: [
-    { pattern: /^(\*|\?|(\*\/)?([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?(,([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?)*|(([1-9]|[12][0-9]|3[01])-([1-9]|[12][0-9]|3[01]))(\/[0-9]+)?(,(([1-9]|[12][0-9]|3[01])-([1-9]|[12][0-9]|3[01]))(\/[0-9]+)?)*|L|LW|([1-9]L)|(L-[0-9]+))$/, 
-      message: '日期格式不正确', 
-      trigger: 'blur' 
+    { pattern: /^(\*|\?|(\*\/)?([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?(,([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?)*|(([1-9]|[12][0-9]|3[01])-([1-9]|[12][0-9]|3[01]))(\/[0-9]+)?(,(([1-9]|[12][0-9]|3[01])-([1-9]|[12][0-9]|3[01]))(\/[0-9]+)?)*|L|LW|([1-9]L)|(L-[0-9]+))$/,
+      message: '日期格式不正确',
+      trigger: 'blur'
     }
   ],
   MonthOfYear: [
-    { pattern: /^(\*|(\*\/)?([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))?(,([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))?)*|(([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))(\/[0-9]+)?(,(([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))(\/[0-9]+)?)*)$/i, 
-      message: '月份格式不正确', 
-      trigger: 'blur' 
+    { pattern: /^(\*|(\*\/)?([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))?(,([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))?)*|(([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))(\/[0-9]+)?(,(([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))(\/[0-9]+)?)*)$/i,
+      message: '月份格式不正确',
+      trigger: 'blur'
     }
   ],
   DayOfWeek: [
-    { pattern: /^(\*|\?|(\*\/)?([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)(-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))?(,([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)(-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))?)*|(([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))(\/[0-9]+)?(,(([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))(\/[0-9]+)?)*|([0-6]L)|([0-6]#[1-5])|(L-?[0-6]?))$/i, 
-      message: '星期格式不正确', 
-      trigger: 'blur' 
+    { pattern: /^(\*|\?|(\*\/)?([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)(-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))?(,([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)(-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))?)*|(([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))(\/[0-9]+)?(,(([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))(\/[0-9]+)?)*|([0-6]L)|([0-6]#[1-5])|(L-?[0-6]?))$/i,
+      message: '星期格式不正确',
+      trigger: 'blur'
     }
   ]
 })
@@ -168,28 +168,28 @@ const rules = reactive({
 // 提交表单
 const submitForm = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     // 准备提交的数据
     const submitData = { ...jobForm }
-    
+
     // 如果ID是默认值且是创建操作，则删除ID让后端自动生成
     if (!isEdit.value && submitData.JobId === defaultFormData.JobId) {
       delete submitData.JobId
     }
-    
+
     // 调用API
     if (isEdit.value) {
       await jobStore.updateJob(jobId.value, submitData)
     } else {
       await jobStore.createJob(submitData)
     }
-    
+
     // 显示成功消息
     ElMessage.success(isEdit.value ? '任务更新成功' : '任务创建成功')
-    
+
     // 返回任务列表
     router.push('/jobs')
   } catch (error) {
@@ -207,15 +207,15 @@ const submitForm = async () => {
 // 重置表单
 const resetForm = () => {
   if (!formRef.value) return
-  
+
   // 重置为默认值
   Object.assign(jobForm, defaultFormData)
-  
+
   // 如果是编辑模式，保留当前ID
   if (isEdit.value && jobId.value) {
     jobForm.JobId = jobId.value
   }
-  
+
   // 清除验证状态
   formRef.value.clearValidate()
 }

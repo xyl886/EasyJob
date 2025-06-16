@@ -2,24 +2,26 @@
 # -*- coding:utf-8 -*-
 """
 @author:18034
-@file: __init__.py.py
+@file: __init__.py
 @time: 2025/04/21
 """
 # Core/__init__.py
 
 import importlib
 import os
-import random
 import sys
 import threading
 import time
 import traceback
+from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 
-from Core.Collection import Job
+from Core.Collection import Job, JobStatus, History
 from Core.Email import *
-from Core.JobBase import JobBase, JobThread
+from Core.JobBase import JobBase
 from Core.MongoDB import MongoDB
+
+_task_executor = ThreadPoolExecutor(max_workers=10)
 
 
 def get_file_path(current_file, marker=""):
@@ -93,7 +95,7 @@ def send_email(title: str, logs: List[dict] = None):
     sender.send(email_content)
 
 
-def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 ** 7):
+def run(job_id):
     """
     运行指定任务
     Run specified job
@@ -107,34 +109,96 @@ def run(job_id, run_id=(int(time.time() * 1000) + random.randint(0, 999)) % 10 *
     job_instance = job_class(job_id=job_id, run_id=run_id)
 
     try:
-        job_instance.logger.warning(f"Starting job: {job_id}")
-        # 启动线程运行 on_run
-        thread = JobThread(job_instance)
-        thread.start()
-        thread.join()  # 等待线程完成，并检查异常
-        job_instance.logger.warning(f"Job {job_id} completed successfully")
+        job_instance.logger.warning("Start JobName: %s   JobID: %s   RunID: %s   StartTime: %s" % (
+            job_instance.job_name, job_id, run_id, str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))))
+        try:
+            init_job(job_id)
+        except Exception as e:
+            print(f"Failed to init job: {str(e)}")
+
+        # 提交任务到线程池（非阻塞）
+        future = _task_executor.submit(execute_job, job_instance)
+
+        # 添加完成回调（异步记录完成时间）
+        future.add_done_callback(
+            lambda f: handle_job_completion(f, job_instance)
+        )
+
     except Exception as e:
-        job_instance.logger.error(f"Job failed: {str(e)}", exc_info=True)
+        job_instance.logger.error(f"Job startup failed: {str(e)}", exc_info=True)
         raise
-    title = f"{job_instance.db_name}:{job_instance.job_id}"
-    query = {
-        'level': {'$gte': 30},  # 大于30
-        'job_id': job_id,
-        'run_id': run_id
-    }
-    send_query = {
-        'level': {'$gte': 40},  # 大于30
-        'job_id': job_id,
-        'run_id': run_id
-    }
-    if DEBUG is True:
-        return
-    if job_instance.db['log'].count(query=send_query) <= 0:
-        return
-    logs = job_instance.db['log'].find_documents(query=query).dict()
-    email_thread = threading.Thread(target=send_email, args=(title, logs))
-    email_thread.start()
-    email_thread.join()
+
+
+def init_job(job_id):
+    job = Job_c.find_documents(query={"JobId": job_id}, limit=1).dict(0)
+    last_history = History_c.find_documents(sort=[("RunId", -1)]).dict(0)
+    if last_history:
+        run_id = last_history.get("RunId") + 1
+    else:
+        run_id = 100001
+    if not job:
+        raise ValueError(f"Job {job_id} not found")
+    history = History(
+        JobId=job_id,
+        JobName=job.get("JobName"),
+        Package=job.get("Package"),
+        JobClass=job.get("JobClass"),
+        Description=job.get("Description"),
+        Status=JobStatus.RUNNING,
+        RunId=100000,
+        Output='',
+        StartTime='',
+        EndTime='')
+    history.RunId = run_id
+    history.StartTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    history.Status = JobStatus.RUNNING
+    History_c.save_dict_to_collection(history.dict(), 'RunId')
+
+
+def execute_job(job_instance):
+    """在独立线程中执行任务逻辑"""
+    try:
+        # 执行实际任务
+        job_instance.on_run()
+        return job_instance, None
+    except Exception as e:
+        return job_instance, e
+
+
+# 异步回调处理
+def handle_job_completion(future, job_instance):
+    # 异步发送邮件
+    job_id = job_instance.job_id
+    run_id = job_instance.run_id
+
+    title = f"{job_instance.job_name}:{job_id}"
+    warning_query = {'level': {'$gte': 30}, 'job_id': job_id, 'run_id': run_id}  # 警告级别
+    error_query = {'level': {'$gte': 40}, 'job_id': job_id, 'run_id': run_id}  # 错误级别
+    history_query = {'JobId': job_id, 'RunId': run_id}  # 历史记录
+    histories = History_c.find_documents(query=history_query)
+    history = {}
+    if histories:
+        history = histories[0]
+
+    try:
+        job_instance, error = future.result()
+        if error:
+            raise error
+        job_instance.logger.warning("Job finished. JobID: %s  RunID: %s" % (job_id, run_id))
+        history['Status'] = JobStatus.COMPLETED
+        if not DEBUG:
+            if job_instance.db['log'].count(query=error_query) <= 0:
+                return
+            logs = job_instance.db['log'].find_documents(query=warning_query).dict()
+            threading.Thread(target=send_email, args=(title, logs)).start()
+
+    except Exception as e:
+        job_instance.logger.error("Job execution failed: JobID: %s  RunID: %s  e: %s" % (job_id, run_id, str(e)),
+                                  exc_info=True)
+        history['Output'] = f"Job execution failed: {str(e)}"
+        history['Status'] = JobStatus.FAILED
+    history['EndTime'] = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    History_c.save_dict_to_collection(history, 'RunId')
 
 
 def auto_import_jobs(base_package=BASE_PACKAGE):
@@ -178,8 +242,8 @@ def save_jobs():
                 Package=BASE_PACKAGE,
                 Description=f'This is {job_name}',
                 Disabled=1,
-                Minute="*",
-                Hour="*",
+                Minute="0",
+                Hour="0",
                 DayOfWeek="*",
                 DayOfMonth="*",
                 MonthOfYear="*",

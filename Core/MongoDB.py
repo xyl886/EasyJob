@@ -1,4 +1,10 @@
-# -*- coding: utf-8 -*-
+#!usr/bin/env python
+# -*- coding:utf-8 -*-
+"""
+@author:18034
+@file: MongoDB.py
+@time: 2025/06/15
+"""
 import hashlib
 import os
 import threading
@@ -29,6 +35,18 @@ class DocumentList:
         for doc in self.documents:
             if '_id' in doc:
                 doc['_id'] = str(doc['_id'])
+
+    def __getitem__(self, index):
+        """
+        获取集合中的某个文档
+        :param index: int 索引
+        :return: dict 文档
+        """
+        if not self.documents:
+            return None
+        if not isinstance(index, int) or index < 0 or index >= len(self.documents):
+            raise IndexError(f"请检查index: {index}")
+        return self.documents[index]
 
     def __iter__(self):
         return iter(self.documents)

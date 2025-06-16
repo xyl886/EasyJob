@@ -1,3 +1,10 @@
+#!usr/bin/env python
+# -*- coding:utf-8 -*-
+"""
+@author:18034
+@file: FileLock.py
+@time: 2025/06/15
+"""
 import random
 import threading
 import time

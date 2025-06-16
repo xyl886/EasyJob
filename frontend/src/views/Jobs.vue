@@ -33,7 +33,7 @@
           border
           stripe
       >
-        <el-table-column prop="JobId" label="任务ID" sortable/>
+        <el-table-column prop="JobId" label="任务ID" width="100" sortable/>
         <el-table-column prop="JobName" label="任务名称" sortable/>
         <el-table-column prop="JobClass" label="任务类" sortable width="300"/>
         <el-table-column prop="Package" label="包名" width="100" sortable/>

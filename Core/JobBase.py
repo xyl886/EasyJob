@@ -1,5 +1,10 @@
-# -*- coding: utf-8 -*-
-# Core/JobBase.py
+#!usr/bin/env python
+# -*- coding:utf-8 -*-
+"""
+@author:18034
+@file: JobBase.py
+@time: 2025/06/15
+"""
 import datetime
 import hashlib
 import logging
@@ -203,10 +208,10 @@ class JobBase(metaclass=JobBaseMeta):
         self.job_id = kwargs.get('job_id')
         self.run_id = kwargs.get('run_id')
         self.InsertUpdateTime = str(datetime.datetime.now())
-        self.db_name = self.__class__.__name__
+        self.job_name = self.__class__.__name__
         self.default_log_level_no = logging.INFO
-        self.db = MongoDB(db_name=self.db_name, log_enabled=kwargs.get('log_enabled', False))
-        self.log_handler = MongoDBHandler(db=self.db, db_name=self.db_name, job_id=self.job_id, run_id=self.run_id)
+        self.db = MongoDB(db_name=self.job_name, log_enabled=kwargs.get('log_enabled', False))
+        self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
         self.logger = self.log_handler.logger
         self.log = self.log_handler.logger
         if not hasattr(self, 'folder'):
@@ -488,23 +493,3 @@ class JobBase(metaclass=JobBaseMeta):
                     result[final_key] = value
 
         return result
-
-
-class JobThread(threading.Thread):
-    """自定义线程，封装异常传递机制"""
-
-    def __init__(self, job_instance):
-        super().__init__()
-        self.job_instance = job_instance
-        self.exc = None  # 保存子线程异常
-
-    def run(self):
-        try:
-            self.job_instance.on_run()
-        except Exception as e:
-            self.exc = e  # 捕获子线程异常
-
-    def join(self, timeout=None):
-        super().join(timeout)
-        if self.exc:
-            raise self.exc  # 在主线程重新抛出异常

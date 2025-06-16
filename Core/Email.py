@@ -1,3 +1,10 @@
+#!usr/bin/env python
+# -*- coding:utf-8 -*-
+"""
+@author:18034
+@file: Email.py
+@time: 2025/05/22
+"""
 import re
 import smtplib
 from email.mime.multipart import MIMEMultipart

@@ -7,9 +7,7 @@
           <div class="header-actions">
             <el-button
                 type="primary"
-                @click="runJob"
-                :disabled="jobStore.currentJob?.Disabled === 1"
-            >
+                @click="runJob">
               执行任务
             </el-button>
             <el-button

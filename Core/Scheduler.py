@@ -14,7 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from watchdog.events import FileSystemEventHandler
 
-from Core import Job_c, save_jobs, MODULE_PATTERN, auto_import_jobs
+from Core import Job_c, save_jobs, auto_import_jobs, MODULE_PATTERN
 from Core.Service import execute_job_core
 
 
@@ -70,8 +70,8 @@ class JobScheduler:
     def _add_or_update_job(self, job: dict):
         """添加或更新任务"""
         trigger = CronTrigger(
-            minute=job.get("Minute", "*"),
-            hour=job.get("Hour", "*"),
+            minute=job.get("Minute", "0"),
+            hour=job.get("Hour", "0"),
             day=job.get("DayOfMonth", "*"),
             month=job.get("MonthOfYear", "*"),
             day_of_week=job.get("DayOfWeek", "*")

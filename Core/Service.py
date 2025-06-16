@@ -163,16 +163,6 @@ async def get_job_logs(job_id: int = None, current_page: int = 1, page_size: int
     return History_c.find_documents(query=query, sort=[("StartTime", -1)], limit=page_size, skip=skip).dict()
 
 
-# 获取最大的RunId
-async def get_max_RunId() -> int:
-    """获取最大dRunId"""
-    history = History_c.find_documents(sort=[("RunId", -1)]).dict(0)
-    if history:
-        return history.get("RunId") + 1
-    else:
-        return 100001
-
-
 def start_async_job(job_id):
     # 获取当前线程的事件循环
     loop = asyncio.new_event_loop()
@@ -186,35 +176,10 @@ def start_async_job(job_id):
 # 任务执行核心
 async def execute_job_core(job_id: int):
     """动态加载并执行任务"""
-    job = await get_job(job_id)
-    if not job:
-        raise ValueError(f"Job {job_id} not found")
-    history = History(
-        JobId=job_id,
-        JobName=job.get("JobName"),
-        Package=job.get("Package"),
-        JobClass=job.get("JobClass"),
-        Description=job.get("Description"),
-        Status=JobStatus.RUNNING,
-        RunId=100000,
-        Output='',
-        StartTime='',
-        EndTime='')
     try:
-        job_id = job.get("JobId")
-        history.StartTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        run_id = await get_max_RunId()
-        history.RunId = run_id
-        history.Status = JobStatus.RUNNING
-        History_c.save_dict_to_collection(history.dict(), 'RunId')
-        Core.run(job_id=job_id, run_id=run_id)
-        history.Status = JobStatus.COMPLETED
+        Core.run(job_id=job_id)
     except Exception as e:
         logger.error(f"Job execution failed: {str(e)}")
-        history.Output = f"Job execution failed: {str(e)}"
-        history.Status = JobStatus.FAILED
-    history.EndTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    History_c.save_dict_to_collection(history.dict(), 'RunId')
 
 
 if __name__ == '__main__':
