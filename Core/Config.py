@@ -5,6 +5,46 @@
 @file: Config.py
 @time: 2025/05/22
 """
+from pathlib import Path
+
+
+def get_file_path(current_file, marker=""):
+    """
+    向上递归查找项目根目录（直到找到标记文件，如 .git/pyproject.toml）
+    """
+    current_path = Path(current_file).resolve().parent
+    while current_path != current_path.parent:  # 防止无限循环
+        if (current_path / marker).exists():
+            return str(current_path) + "\\" + marker
+        current_path = current_path.parent
+    raise FileNotFoundError(f"Could not find project root with marker: {marker}")
+
+
+yaml_path = ''
+try:
+    yaml_path = get_file_path(__file__, marker="config.yaml")
+    print(f"[AutoImport] config.yaml found at: {yaml_path}")
+except Exception as e:
+    print("[AutoImport] Failed to get_file_path config.yaml, e:" + str(e))
+try:
+    import yaml
+
+    with open(yaml_path, encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    BASE_PACKAGE = config.get('jobs').get('base_package', 'Job')
+    MODULE_PATTERN = config.get('jobs').get('module_pattern', 'Action.py')
+    DEBUG = config.get('jobs').get('debug')
+    MONGO_URI = config.get('mongo').get('uri', 'mongodb://localhost:27017')
+    DB_NAME = config.get('mongo').get('database', 'EasyJob')
+    SMTP = config.get('smtp')
+    TO = config.get('smtp').get('to')
+except Exception as e:
+    print(f"[AutoImport] Failed to load config.yaml: {e}")
+    BASE_PACKAGE = 'Job'
+    MODULE_PATTERN = 'Action.py'
+    MONGO_URI = 'mongodb://localhost:27017'
+    DB_NAME = 'EasyJob'
+
 content_type_ext = {
     # 图片类
     "image/jpeg": ".jpg",

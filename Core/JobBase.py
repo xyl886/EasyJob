@@ -10,7 +10,6 @@ import hashlib
 import logging
 import os
 import sys
-import threading
 import time
 from contextlib import ContextDecorator
 from functools import wraps
@@ -493,3 +492,5 @@ class JobBase(metaclass=JobBaseMeta):
                     result[final_key] = value
 
         return result
+
+

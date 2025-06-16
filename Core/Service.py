@@ -6,7 +6,6 @@
 @time: 2025/05/20
 """
 import asyncio
-import time
 from typing import List
 from typing import Optional
 
@@ -14,8 +13,8 @@ from fastapi import HTTPException
 from loguru import logger
 
 import Core
-from Core.Collection import Job, History, JobStatus
 from Core import Job_c, History_c
+from Core.Collection import Job, History, JobStatus
 
 
 async def get_statistics(days: int = 7) -> Optional[dict]:

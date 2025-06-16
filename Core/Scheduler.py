@@ -14,13 +14,17 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from watchdog.events import FileSystemEventHandler
 
-from Core import Job_c, save_jobs, auto_import_jobs, MODULE_PATTERN
+from Core import save_jobs, auto_import_jobs
+from Core.Config import MODULE_PATTERN, MONGO_URI, DB_NAME
 from Core.Service import execute_job_core
+from Core.MongoDB import MongoDB
 
 
 class JobScheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
+        self.db = MongoDB(uri=MONGO_URI, db_name=DB_NAME)
+        self.Job_c = self.db['Job']
         self._current_jobs: Dict[str, dict] = {}
 
     async def start(self):
@@ -52,7 +56,7 @@ class JobScheduler:
     async def _update_scheduler(self):
         """更新调度器中的任务"""
         # 获取数据库中所有启用的任务
-        db_jobs = {j['JobId']: j for j in Job_c.find_documents({"Disabled": 0}).dict()}
+        db_jobs = {j['JobId']: j for j in self.Job_c.find_documents({"Disabled": 0}).dict()}
 
         # 检查新增或修改的任务
         for job_id, job in db_jobs.items():

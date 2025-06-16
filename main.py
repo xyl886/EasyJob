@@ -13,7 +13,7 @@ from fastapi import Query
 from starlette.middleware.cors import CORSMiddleware
 from watchdog.observers import Observer
 
-from Core import BASE_PACKAGE
+from Core.Config import BASE_PACKAGE
 from Core.Collection import PageInt, JobIdInt, PageSizeInt
 from Core.Result import *
 from Core.Scheduler import *
