@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import List, Union
 
 import pymongo.errors
 from loguru import logger
@@ -36,6 +36,15 @@ class DocumentList:
             if '_id' in doc:
                 doc['_id'] = str(doc['_id'])
 
+    def _validate_index(self, index: int):
+        """
+        验证索引是否有效
+        :param index: 索引值
+        :raises IndexError: 如果索引无效
+        """
+        if not isinstance(index, int) or index < 0 or index >= len(self.documents):
+            raise IndexError(f"请检查index: {index}")
+
     def __getitem__(self, index):
         """
         获取集合中的某个文档
@@ -44,8 +53,7 @@ class DocumentList:
         """
         if not self.documents:
             return None
-        if not isinstance(index, int) or index < 0 or index >= len(self.documents):
-            raise IndexError(f"请检查index: {index}")
+        self._validate_index(index)
         return self.documents[index]
 
     def __iter__(self):
@@ -60,7 +68,7 @@ class DocumentList:
         """
         return len(self.documents)
 
-    def dict(self, index: int = None) -> List[dict] | dict:
+    def dict(self, index: int = None) -> List[dict]| dict:
         """
         将 object_id 转换为str,此方法是为了方便后续序列化不出错
         :param index: 如果提供索引，返回对应索引位置的文档dict
@@ -69,9 +77,7 @@ class DocumentList:
             return []
         self._convert_id_to_str()
         if index is not None:
-            # 增加索引范围检查，避免 IndexError
-            if not isinstance(index, int) or index < 0 or index >= len(self.documents):
-                raise IndexError(f"请检查index: {index}")
+            self._validate_index(index)
             return self.documents[index]
         return self.documents
 

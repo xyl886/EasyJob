@@ -8,16 +8,19 @@
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi import Query
+from loguru import logger
 from starlette.middleware.cors import CORSMiddleware
+from typing import Dict, Optional
 from watchdog.observers import Observer
 
 from Core.Config import BASE_PACKAGE
-from Core.Collection import PageInt, JobIdInt, PageSizeInt
-from Core.Result import *
-from Core.Scheduler import *
-from Core.Service import *
+from Core.Collection import PageInt, JobIdInt, PageSizeInt, Job
+from Core.Result import Result, SuccessResult, ErrorResult
+from Core.Scheduler import JobScheduler, JobFileHandler
+from Core.Service import get_statistics, create_job, get_jobs_count, get_jobs, get_job, update_job, delete_job, \
+    start_async_job, get_job_logs_count, get_job_logs
 
 """
 基于FastAPI的任务调度平台核心实现
@@ -177,10 +180,10 @@ async def trigger_job(job_id: JobIdInt):
     try:
         job = await get_job(job_id)
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
         thread = threading.Thread(target=start_async_job, args=(job_id,))
         thread.start()
-        return SuccessResult(message="Job started in background")
+        return SuccessResult(message=f"Job {job_id} started in background")
     except HTTPException as e:
         return ErrorResult(code=e.status_code, message=e.detail)
     except Exception as e:
@@ -277,7 +280,6 @@ async def get_job_history(
         return ErrorResult(message="服务器内部错误", code=500)
 
 
-# 统计接口
 # http://127.0.0.1:8000/docs
 if __name__ == "__main__":
     import uvicorn

@@ -38,6 +38,7 @@ try:
     DB_NAME = config.get('mongo').get('database', 'EasyJob')
     SMTP = config.get('smtp')
     TO = config.get('smtp').get('to')
+    print("[AutoImport] Success loaded config.yaml")
 except Exception as e:
     print(f"[AutoImport] Failed to load config.yaml: {e}")
     BASE_PACKAGE = 'Job'

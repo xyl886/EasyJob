@@ -10,12 +10,10 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Set
-
-from loguru import logger
-
 from typing import List, Union, Optional, Dict
+
 from jinja2 import Template
-from pymongo import MongoClient
+from loguru import logger
 
 
 class EmailValidator:
@@ -151,43 +149,43 @@ class EmailSender(object):
             raise
 
 
-def send_email(title, logs: List[dict] = None):
-    if logs is None:
-        logs = []
-    header = sorted({key for log in logs for key in log.keys()})
-
-    # 加载模板
-    template_path = r'D:\soft\pythonProject\xyl886\EasyJob\log_template.html'
-    with open(template_path, encoding="utf-8") as f:
-        template = Template(f.read())
-
-    # 渲染 HTML 内容
-    rendered_html = template.render(title=title, logs=logs, header=header)
-    email_content = EmailMessageContent(
-        to=['1803466516@qq.com'],
-        subject=title,
-        body=rendered_html,
-        subtype="html"
-    )
-    smtp_config = SMTPConfig(
-        login='1803466516@qq.com',
-        password='favqogvppmfjbgcj'
-    )
-    sender = EmailSender(smtp_config)
-    sender.send(email_content)
-
-
-if __name__ == '__main__':
-    level_ = 30
-    job_id = 100015
-    run_id = 579453
-    clazz = 'BabylistAction'
-    query = {
-        'level': {'$gte': level_},  # 大于30
-        'job_id': job_id,
-        'run_id': run_id
-    }
-    db = MongoClient(f"mongodb://localhost:27017")
-    logs = db[clazz]['log'].find(query)
-    title = f"{clazz}:{job_id}"
-    send_email(title, logs=[doc for doc in logs])
+# def send_email(title, logs: List[dict] = None):
+#     if logs is None:
+#         logs = []
+#     header = sorted({key for log in logs for key in log.keys()})
+#
+#     # 加载模板
+#     template_path = r'D:\soft\pythonProject\xyl886\EasyJob\log_template.html'
+#     with open(template_path, encoding="utf-8") as f:
+#         template = Template(f.read())
+#
+#     # 渲染 HTML 内容
+#     rendered_html = template.render(title=title, logs=logs, header=header)
+#     email_content = EmailMessageContent(
+#         to=['1803466516@qq.com'],
+#         subject=title,
+#         body=rendered_html,
+#         subtype="html"
+#     )
+#     smtp_config = SMTPConfig(
+#         login='1803466516@qq.com',
+#         password='favqogvppmfjbgcj'
+#     )
+#     sender = EmailSender(smtp_config)
+#     sender.send(email_content)
+#
+#
+# if __name__ == '__main__':
+#     level_ = 30
+#     job_id = 100015
+#     run_id = 579453
+#     clazz = 'BabylistAction'
+#     query = {
+#         'level': {'$gte': level_},  # 大于30
+#         'job_id': job_id,
+#         'run_id': run_id
+#     }
+#     db = MongoClient(f"mongodb://localhost:27017")
+#     logs = db[clazz]['log'].find(query)
+#     title = f"{clazz}:{job_id}"
+#     send_email(title, logs=[doc for doc in logs])

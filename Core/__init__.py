@@ -87,6 +87,7 @@ def save_jobs():
 
 
 auto_import_jobs()
+save_jobs()
 __all__ = [
     'Job_c',
     'History_c',

@@ -59,7 +59,7 @@ class History(BaseModel):
     Description: Optional[str] = Field(None, description="任务描述")
     StartTime: str = Field(..., description="开始时间")
     EndTime: str = Field(..., description="结束时间")
-    Status: int = Field("pending", description="运行状态")
+    Status: int = Field("", description="运行状态")
     Output: Optional[str] = Field(None, description="运行输出")
 
     class Config:
