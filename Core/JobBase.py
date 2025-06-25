@@ -15,6 +15,7 @@ from contextlib import ContextDecorator
 from functools import wraps
 from typing import Union, Tuple, Callable, Optional, Dict, List
 
+import pandas as pd
 import requests
 from loguru import logger
 from requests import RequestException, ReadTimeout, ConnectTimeout
@@ -26,11 +27,18 @@ from Core.FileLock import FileLock
 from Core.MongoDB import MongoDB
 
 
+# 自定义exception
+class JobException(Exception):
+    pass
+
+
 def retry(
         retries: int = 5,  # 重试次数
         delay: Union[int, float] = 1,  # 延迟时间
+        max_delay: Union[int, float] = 8,  # 最大延迟时间
         backoff: Union[int, float] = 2,  # 延迟倍数
-        exceptions: Tuple[Exception] = (RequestException, ReadTimeout, HTTPError, ConnectTimeout),  # 捕获的异常类型
+        exceptions: Tuple[Exception] = (RequestException, ReadTimeout, HTTPError, ConnectTimeout, JobException),
+        # 捕获的异常类型
         log_args: bool = True  # 是否记录参数
 ):
     def decorator(func: Callable):
@@ -51,8 +59,8 @@ def retry(
                 except exceptions as e:
                     final_error = e
                     if attempt < retries:
-                        sleep_time = delay * (backoff ** attempt)
-                        logger.warning(
+                        sleep_time = min(delay * (backoff ** attempt), max_delay)
+                        logger.error(
                             f"[{func_name}] Attempt {attempt + 1} failed: {str(e)} "
                             f"Retrying in {sleep_time}s..."
                         )
@@ -65,7 +73,7 @@ def retry(
                             f"Error: {str(final_error)}"
                         )
                         logger.error(error_log)
-                    raise final_error
+                        raise final_error
                 except Exception as unexpected_error:
                     # 捕获未预期的异常，立即终止并记录
                     logger.critical(
@@ -206,6 +214,7 @@ class JobBase(metaclass=JobBaseMeta):
     def __init__(self, *args, **kwargs):
         self.job_id = kwargs.get('job_id')
         self.run_id = kwargs.get('run_id')
+        self.retry_count = kwargs.get('retry', 30)
         self.InsertUpdateTime = str(datetime.datetime.now())
         self.job_name = self.__class__.__name__
         self.default_log_level_no = logging.INFO
@@ -232,8 +241,8 @@ class JobBase(metaclass=JobBaseMeta):
         md5.update(str(text).encode('utf-8'))
         return md5.hexdigest()
 
-    @retry(30)
     @logger.catch
+    @retry(3)
     def send_request(
             self,
             url: str,
@@ -312,9 +321,9 @@ class JobBase(metaclass=JobBaseMeta):
                     response.encoding = encoding
                 else:
                     response.encoding = response.apparent_encoding
-            except requests.exceptions.RequestException as e:
+            except RequestException as e:
                 self.logger.error(f"request failed: {e}")  # 可选日志记录
-                raise e  # 触发 retry 装饰器重试
+                raise JobException(e)  # 触发 retry 装饰器重试
             try:
                 if res_type == 'text':
                     res = response.text
@@ -323,23 +332,25 @@ class JobBase(metaclass=JobBaseMeta):
                 elif res_type == 'content':
                     res = response.content
                 else:
-                    error = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
-                    raise error
+                    error_msg = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
+                    self.logger.error(error_msg)
+                    raise JobException(error_msg)
             except Exception as e:
-                error = f"failed to parse the response: {e}, res: \n{res}"
-                self.logger.error(error)
+                error_msg = f"failed to parse the response: {e}"
+                self.logger.error(error_msg)
+                raise JobException(error_msg)
+            # 通过 validate_str_list对响应校验，决定是否重试
+            for each_validate_str in validate_str_list:
+                if each_validate_str not in str(res):
+                    self.logger.info(f"url: {url} str: {each_validate_str} request failed，on retry...")
+                    raise JobException(f"请求失败, {each_validate_str} not in res")
             if dump_file_name is not None and res is not None:
                 try:
                     self.dump(res, file_name=dump_file_name, res_type=res_type)  # 假设 dump 方法能处理不同类型数据
                 except Exception as e:
-                    error = f"failed to save the cache file: {e}, res: \n{res}"
-                    self.logger.error(error)
-                    raise Exception(f"failed to save the cache file: {e}")
-        # 通过 validate_str_list对响应校验，决定是否重试
-        for each_validate_str in validate_str_list:
-            if each_validate_str not in str(res):
-                self.logger.info(f"url: {url} str: {each_validate_str} request failed，on retry...{res}")
-                raise requests.exceptions.RequestException(f"请求失败, {each_validate_str} not in {str(res)}")
+                    error_msg = f"failed to save the cache file: {e}"
+                    self.logger.error(error_msg)
+                    raise JobException(f"failed to save the cache file: {e}")
         return res
 
     def dump(self, res_text, file_name: str, res_type: str = "text"):
@@ -380,7 +391,7 @@ class JobBase(metaclass=JobBaseMeta):
                     f.write(res_text)
             else:
                 raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
-            self.logger.info(f'{file_name} saved_to {save_folder}')
+            self.logger.success(f'Saved file {file_name} to {save_folder}')
 
     def get_dump(self, file_name: str, date=None):
         """
@@ -420,9 +431,6 @@ class JobBase(metaclass=JobBaseMeta):
             # 获取文件扩展名
             _, ext = os.path.splitext(file_name)
             ext = ext.lower()  # 统一小写处理
-            # 检验文件是否存在
-            if not os.path.exists(save_path):
-                return None
             self.logger.info(f'read cache {file_name}')
             lock = FileLock.get_lock(save_path)  # 获取该路径的专属锁
             with lock:
@@ -493,4 +501,34 @@ class JobBase(metaclass=JobBaseMeta):
 
         return result
 
+    def save_to_csv(self, data, file_name, date=None, index=False, **kwargs):
+        """
+        使用 Pandas 将字典列表保存为 CSV 文件
 
+        参数:
+            data: list of dict, 要保存的数据（每个字典代表一行）
+            filename: str, 目标 CSV 文件名
+            index: bool, 是否包含行索引（默认为 False）
+            **kwargs: 其他 pandas.DataFrame.to_csv() 支持的参数
+                - sep: 分隔符（默认为逗号）
+                - encoding: 文件编码（默认为 'utf-8'）
+                - header: 是否包含列名（默认为 True）
+                - 其他参数如 na_rep, float_format 等
+
+        示例:
+            data = [{'name': 'Alice', 'age': 30}, {'name': 'Bob', 'age': 25}]
+            save_dicts_to_csv(data, 'output.csv', sep='|', encoding='gbk')
+        """
+        # 确定日期目录,如果没有传入参数date，则尝试获取子类初始化的date
+        target_date = date or self.date
+        if not target_date:
+            raise ValueError("Date must be provided or set in instance")
+
+        # 构建完整文件路径
+        save_dir = os.path.join(self.folder, target_date)
+        save_path = os.path.join(save_dir, file_name)
+        # 将字典列表转换为 DataFrame
+        df = pd.DataFrame(data)
+
+        # 保存到 CSV 文件
+        df.to_csv(save_path, index=index, encoding='utf-8-sig', **kwargs)

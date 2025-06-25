@@ -22,7 +22,7 @@
             :max="999999"
             :disabled="isEdit"
           />
-          <div class="form-help">6位数字ID，范围100000-9999999</div>
+          <div class="form-help">6-7位数字ID，范围100000-9999999</div>
         </el-form-item>
 
         <el-form-item label="任务名称" prop="JobName">
@@ -191,7 +191,7 @@ const submitForm = async () => {
     ElMessage.success(isEdit.value ? '任务更新成功' : '任务创建成功')
 
     // 返回任务列表
-    router.push('/jobs')
+    await router.push('/jobs')
   } catch (error) {
     if (error && error.fields) {
       // 验证错误，已在UI中显示
@@ -237,7 +237,7 @@ onMounted(async () => {
     } catch (error) {
       ElMessage.error(error.message || '加载任务数据失败')
       // 加载失败后返回列表
-      router.push('/jobs')
+      await router.push('/jobs')
     }
   } else {
     // 创建新任务时，设置默认值

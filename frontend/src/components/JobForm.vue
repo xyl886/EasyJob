@@ -8,9 +8,7 @@
   >
     <el-form-item label="任务ID" prop="JobId">
       <el-input-number 
-        v-model="jobForm.JobId" 
-        :min="100000" 
-        :max="999999" 
+        v-model="jobForm.JobId"
         :disabled="isEdit"
       />
       <div class="form-help">6位数字ID，范围100000-999999</div>
@@ -114,7 +112,7 @@ const jobForm = reactive({
 const rules = reactive({
   JobId: [
     { required: true, message: '请输入任务ID', trigger: 'blur' },
-    { type: 'number', min: 100000, max: 999999, message: '任务ID必须是6位数字', trigger: 'blur' }
+    { type: 'number', min: 100000, max: 9999999, message: '任务ID必须是6-7位数字', trigger: 'blur' }
   ],
   JobName: [
     { required: true, message: '请输入任务名称', trigger: 'blur' }
@@ -124,6 +122,36 @@ const rules = reactive({
   ],
   Package: [
     { required: true, message: '请输入包名', trigger: 'blur' }
+  ],
+    Minute: [
+    { pattern: /^(\*|\?|(\*\/)?[0-5]?[0-9](-[0-5]?[0-9])?(,[0-5]?[0-9](-[0-5]?[0-9])?)*|([0-5]?[0-9]-[0-5]?[0-9])(\/[0-9]+)?(,([0-5]?[0-9]-[0-5]?[0-9])(\/[0-9]+)?)*)$/,
+      message: '分钟格式不正确',
+      trigger: 'blur'
+    }
+  ],
+  Hour: [
+    { pattern: /^(\*|\?|(\*\/)?([0-9]|[0-1][0-9]|2[0-3])(-([0-9]|[0-1][0-9]|2[0-3]))?(,([0-9]|[0-1][0-9]|2[0-3])(-([0-9]|[0-1][0-9]|2[0-3]))?)*|(([0-9]|[0-1][0-9]|2[0-3])-([0-9]|[0-1][0-9]|2[0-3]))(\/[0-9]+)?(,(([0-9]|[0-1][0-9]|2[0-3])-([0-9]|[0-1][0-9]|2[0-3]))(\/[0-9]+)?)*)$/,
+      message: '小时格式不正确',
+      trigger: 'blur'
+    }
+  ],
+  DayOfMonth: [
+    { pattern: /^(\*|\?|(\*\/)?([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?(,([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?)*|(([1-9]|[12][0-9]|3[01])-([1-9]|[12][0-9]|3[01]))(\/[0-9]+)?(,(([1-9]|[12][0-9]|3[01])-([1-9]|[12][0-9]|3[01]))(\/[0-9]+)?)*|L|LW|([1-9]L)|(L-[0-9]+))$/,
+      message: '日期格式不正确',
+      trigger: 'blur'
+    }
+  ],
+  MonthOfYear: [
+    { pattern: /^(\*|(\*\/)?([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))?(,([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))?)*|(([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))(\/[0-9]+)?(,(([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-([1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))(\/[0-9]+)?)*)$/i,
+      message: '月份格式不正确',
+      trigger: 'blur'
+    }
+  ],
+  DayOfWeek: [
+    { pattern: /^(\*|\?|(\*\/)?([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)(-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))?(,([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)(-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))?)*|(([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))(\/[0-9]+)?(,(([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT)-([0-6]|SUN|MON|TUE|WED|THU|FRI|SAT))(\/[0-9]+)?)*|([0-6]L)|([0-6]#[1-5])|(L-?[0-6]?))$/i,
+      message: '星期格式不正确',
+      trigger: 'blur'
+    }
   ]
 })
 
@@ -155,6 +183,7 @@ const cancel = () => {
 // Initialize form data
 onMounted(() => {
   if (props.jobData) {
+    // console.log('props.jobData', props.jobData)
     Object.assign(jobForm, props.jobData)
   }
 })

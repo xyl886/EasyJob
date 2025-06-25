@@ -2,7 +2,10 @@ import axios from 'axios'
 
 // Get the current hostname and port for dynamic configuration
 const isDevelopment = import.meta.env.DEV
-const baseURL = isDevelopment ? 'http://localhost:8000' : window.location.origin
+// 优先级：环境变量 > 全局配置 > 默认值
+const baseURL = import.meta.env.VITE_API_BASE_URL ||
+    (window.APP_CONFIG?.API_BASE_URL) ||
+    (import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin)
 
 const apiClient = axios.create({
     baseURL,

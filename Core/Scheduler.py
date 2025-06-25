@@ -16,8 +16,8 @@ from watchdog.events import FileSystemEventHandler
 
 from Core import save_jobs, auto_import_jobs
 from Core.Config import MODULE_PATTERN, MONGO_URI, DB_NAME
-from Core.Service import execute_job_core
 from Core.MongoDB import MongoDB
+from Core.Service import start_async_job
 
 
 class JobScheduler:
@@ -29,9 +29,9 @@ class JobScheduler:
 
     async def start(self):
         """启动调度器"""
+        await self._update_scheduler()
         if not self.scheduler.running:
             self.scheduler.start()
-        await self._update_scheduler()
         asyncio.create_task(self.run_periodic_task())
         asyncio.create_task(self._monitor_job_changes())
 
@@ -51,7 +51,8 @@ class JobScheduler:
         while True:
             await asyncio.sleep(30)  # 每30秒检查一次
             await self._update_scheduler()
-            # print("_current_jobs:", self._current_jobs)
+            for job_id, job in self._current_jobs.items():
+                print(f"JobId: {job_id} Job:{job}")
 
     async def _update_scheduler(self):
         """更新调度器中的任务"""
@@ -62,12 +63,10 @@ class JobScheduler:
         for job_id, job in db_jobs.items():
             if job_id not in self._current_jobs or job != self._current_jobs[job_id]:
                 self._add_or_update_job(job)
-
         # 检查需要删除的任务
         for job_id in list(self._current_jobs.keys()):
             if job_id not in db_jobs:
                 self._remove_job(job_id)
-
         # 更新缓存
         self._current_jobs = db_jobs
 
@@ -82,7 +81,7 @@ class JobScheduler:
         )
 
         self.scheduler.add_job(
-            execute_job_core,
+            start_async_job,
             trigger,
             args=[job['JobId']],
             id=f"job_{job['JobId']}",

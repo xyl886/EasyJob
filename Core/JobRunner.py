@@ -5,29 +5,24 @@
 @file:  JobRunner.py
 @time: 2025/06/16
 """
-import atexit
-import signal
-import sys
 import threading
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
-
 from typing import List
 
 from jinja2 import Template
 from loguru import logger
-from Core.MongoDB import MongoDB
-from Core.Config import *
+
 from Core.Collection import History, JobStatus
+from Core.Config import *
 from Core.Email import EmailMessageContent, SMTPConfig, EmailSender
 from Core.JobBase import JobBase
+from Core.MongoDB import MongoDB
 
 
 class JobRunner:
     _task_executor = ThreadPoolExecutor(max_workers=10)
-    # 添加类变量跟踪所有运行中的runner
-    _active_runners = set()
-    _active_runners_lock = threading.Lock()
+
     # 类级别的数据库连接
     _db = None
     _Job_c = None
@@ -38,79 +33,6 @@ class JobRunner:
         self.run_id = run_id
         self.job_instance = None
         self._init_job()  # 初始化任务记录
-        # 注册当前实例到活跃列表
-        with JobRunner._active_runners_lock:
-            JobRunner._active_runners.add(self)
-
-        # 注册清理函数
-        atexit.register(self._cleanup_on_exit)
-
-    @classmethod
-    def shutdown(cls):
-        """关闭线程池并等待所有任务完成"""
-        cls._task_executor.shutdown(wait=True)
-        logger.error("线程池已安全关闭")
-
-    @classmethod
-    def _global_cleanup(cls):
-        """系统退出时的全局清理"""
-        with cls._active_runners_lock:
-            runners = list(cls._active_runners)
-
-        for runner in runners:
-            runner._mark_as_interrupted()
-        # 添加线程池关闭
-        cls.shutdown()
-
-    @classmethod
-    def register_signal_handlers(cls):
-        """注册更全面的信号处理"""
-        signals = [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]
-        for sig in signals:
-            signal.signal(sig, cls._handle_termination_signal)
-
-        # 添加Windows支持
-        if sys.platform == "win32":
-            signal.signal(signal.SIGBREAK, cls._handle_termination_signal)
-
-        atexit.register(cls._global_cleanup)
-
-    @classmethod
-    def _handle_termination_signal(cls, signum, frame):
-        """处理终止信号"""
-        cls._global_cleanup()
-        sys.exit(1)  # 退出进程
-
-    def _cleanup_on_exit(self):
-        """当前实例退出时的清理"""
-        if self in JobRunner._active_runners:
-            self._mark_as_interrupted()
-        if hasattr(self, 'db'):
-            self.db.close()
-
-    def _mark_as_interrupted(self):
-        """标记任务为被中断状态"""
-        try:
-            history_query = {'JobId': self.job_id, 'RunId': self.run_id}
-            history = self._History_c.find_documents(query=history_query)[0]
-
-            # 更新状态为中断
-            history['Status'] = JobStatus.FAILED
-            history['EndTime'] = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-            history['Output'] = "Job was interrupted by system signal"
-
-            self._History_c.save_dict_to_collection(history, 'RunId')
-            self.job_instance.logger.warning(f"Job marked as interrupted: JobId:{self.job_id} RunId:{self.run_id}")
-
-        except Exception as e:
-            logger.error(f"CRITICAL: Failed to mark job as interrupted: {str(e)}")
-        finally:
-            self._discard()
-
-    def _discard(self):
-        # 从活跃列表移除
-        with JobRunner._active_runners_lock:
-            JobRunner._active_runners.discard(self)
 
     @classmethod
     def _init_db(cls):
@@ -126,8 +48,7 @@ class JobRunner:
 
     def _init_job(self):
         """初始化任务历史记录"""
-        if JobRunner._db is None:
-            JobRunner._init_db()
+        self._init_db()
         try:
             job = self._Job_c.find_documents(query={"JobId": self.job_id}, limit=1).dict(0)
             if not job:
@@ -181,12 +102,6 @@ class JobRunner:
     def execute(self):
         """执行任务核心逻辑"""
         try:
-            # 检查线程池是否已关闭
-            if JobRunner._task_executor._shutdown:
-                logger.error("Thread pool is shutdown, cannot submit new tasks")
-                self._mark_as_interrupted()
-                return
-
             if self.job_id not in JobBase._registry:
                 raise ValueError(f"Job ID {self.job_id} not registered")
 
@@ -203,6 +118,7 @@ class JobRunner:
             # 提交任务到线程池
             future = self._task_executor.submit(self._execute_core)
             future.add_done_callback(self._task_callback)
+            return future  # 返回Future对象
 
         except Exception as e:
             if self.job_instance:
@@ -211,11 +127,11 @@ class JobRunner:
 
     def _execute_core(self):
         """实际执行任务的方法（线程中运行）"""
-        try:
-            self.job_instance.on_run()
-            return None
-        except Exception as e:
-            return e
+        # try:
+        self.job_instance.on_run()
+        # except Exception as e:
+        #     logger.error(f"Job failed: JobId:{self.job_id} RunId:{self.run_id} - {str(e)}")
+        #     return e
 
     def _task_callback(self, future):
         """任务完成回调处理"""
@@ -232,12 +148,12 @@ class JobRunner:
                 history['Output'] = f"Job execution failed: {str(error)}"
                 history['Status'] = JobStatus.FAILED
             else:
-                self.job_instance.logger.warning(
-                    f"Job finished, JobId:{self.job_id} RunId:{self.run_id}"
-                )
                 history['Status'] = JobStatus.COMPLETED
-
-            history['EndTime'] = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+            EndTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+            history['EndTime'] = EndTime
+            self.job_instance.logger.warning(
+                f"Job finished,JobName:{history.get('JobName')} JobId:{self.job_id} RunId:{self.run_id} EndTime:{EndTime}"
+            )
             self._History_c.save_dict_to_collection(history, 'RunId')
 
             # 错误日志邮件通知
@@ -250,5 +166,3 @@ class JobRunner:
 
         except Exception as e:
             logger.error(f"CRITICAL: Completion handling failed: {str(e)}")
-        finally:
-            self._discard()

@@ -196,7 +196,6 @@ async def get_history(
         page_size: PageSizeInt = Query(10, description="每页数量，最大100", le=100),
         job_name: Optional[str] = Query(None, description="任务名称模糊查询", max_length=50),
         status: Optional[int] = Query(None, description="任务状态")
-
 ):
     """
     获取任务执行历史记录

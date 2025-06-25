@@ -28,8 +28,8 @@ def run(job_id):
     last_history = History_c.find_documents(sort=[("RunId", -1)]).dict(0)
     run_id = last_history.get("RunId") + 1 if last_history else 100001
     runner = JobRunner(job_id, run_id)
-    runner.execute()
-
+    future = runner.execute()
+    future.result()  # 阻塞等待任务完成
 
 def auto_import_jobs(base_package=BASE_PACKAGE):
     """

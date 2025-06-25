@@ -25,11 +25,6 @@ const routes = [
     path: '/history',
     name: 'JobHistory',
     component: () => import('../views/History.vue')
-  },
-  {
-    path: '/job/edit/:id',
-    name: 'EditJob',
-    component: () => import('../views/JobForm.vue')
   }
 ]
 

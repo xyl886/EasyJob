@@ -59,7 +59,7 @@
           <el-table-column prop="EndTime" label="结束时间"/>
           <el-table-column prop="Status" label="状态">
             <template #default="{ row }">
-              <el-tag :type="getStatusType(row.Status)">{{ row.Status }}</el-tag>
+              <el-tag :type="getStatusType(row.Status)">{{ getStatusText(row.Status) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="100">
@@ -119,7 +119,17 @@ const getStatusType = (status) => {
       return 'info'
   }
 }
-
+// 获取状态文本
+const getStatusText = (status) => {
+  switch (status) {
+    case 3:
+      return '成功'
+    case 4:
+      return '失败'
+    default:
+      return '运行中'
+  }
+}
 const runJob = async () => {
   await jobStore.runJob(jobId.value)
   // Refresh history after running the job
