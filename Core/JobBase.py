@@ -9,21 +9,24 @@ import datetime
 import hashlib
 import logging
 import os
+import platform
+import re
 import sys
 import time
 from contextlib import ContextDecorator
 from functools import wraps
+from pathlib import Path
 from typing import Union, Tuple, Callable, Optional, Dict, List
 
 import pandas as pd
 import requests
 from loguru import logger
+from pandas import DataFrame
 from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
 from Core.Config import content_type_ext
 from Core.EntityBase import EntityBase
-from Core.FileLock import FileLock
 from Core.MongoDB import MongoDB
 
 
@@ -241,7 +244,7 @@ class JobBase(metaclass=JobBaseMeta):
         md5.update(str(text).encode('utf-8'))
         return md5.hexdigest()
 
-    @logger.catch
+    @logger.catch(reraise=True)
     @retry(3)
     def send_request(
             self,
@@ -376,22 +379,19 @@ class JobBase(metaclass=JobBaseMeta):
         if file_dir:  # 确保目录路径非空
             os.makedirs(file_dir, exist_ok=True)
         # 处理不同内容类型
-        file_path = os.path.join(save_folder, file_name)
-        lock = FileLock.get_lock(file_path)  # 获取该路径的专属锁
-        with lock:
-            if res_type == "text":
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(str(res_text))
-            elif res_type == "json":
-                import json
-                with open(file_path, "w", encoding="utf-8", errors="replace") as f:
-                    json.dump(res_text, f, ensure_ascii=False, indent=2)
-            elif res_type == "content":
-                with open(file_path, "wb") as f:
-                    f.write(res_text)
-            else:
-                raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
-            self.logger.success(f'Saved file {file_name} to {save_folder}')
+        if res_type == "text":
+            with open(file_path, "w", encoding="utf-8", errors="replace") as f:
+                f.write(str(res_text))
+        elif res_type == "json":
+            import json
+            with open(file_path, "w", encoding="utf-8", errors="replace") as f:
+                json.dump(res_text, f, ensure_ascii=False, indent=2)
+        elif res_type == "content":
+            with open(file_path, "wb", errors="replace") as f:
+                f.write(res_text)
+        else:
+            raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
+        self.logger.success(f'Saved file {file_name} to {save_folder}')
 
     def get_dump(self, file_name: str, date=None):
         """
@@ -418,7 +418,7 @@ class JobBase(metaclass=JobBaseMeta):
         # 确定日期目录,如果没有传入参数date，则尝试获取子类初始化的date
         target_date = date or self.date
         if not target_date:
-            raise ValueError("Date must be provided or set in instance")
+            raise ValueError("Args date must be provided or set in instance")
 
         # 构建完整文件路径
         save_dir = os.path.join(self.folder, target_date)
@@ -431,22 +431,89 @@ class JobBase(metaclass=JobBaseMeta):
             # 获取文件扩展名
             _, ext = os.path.splitext(file_name)
             ext = ext.lower()  # 统一小写处理
-            self.logger.info(f'read cache {file_name}')
-            lock = FileLock.get_lock(save_path)  # 获取该路径的专属锁
-            with lock:
-                if ext == '.json':
-                    import json
-                    with open(save_path, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                elif ext in [v.lower() for v in content_type_ext.values()]:
-                    with open(save_path, "rb") as f:
-                        return f.read()
-                else:  # 默认按文本处理
-                    with open(save_path, "r", encoding="utf-8") as f:
-                        return f.read()
+            content = None
+            if ext == '.json':
+                import json
+                with open(save_path, "r", encoding="utf-8") as f:
+                    content = json.load(f)
+            elif ext in [v.lower() for v in content_type_ext.values()]:
+                with open(save_path, "rb") as f:
+                    content = f.read()
+            else:  # 默认按文本处理
+                with open(save_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+            self.logger.success(f'Success read cache {file_name} form {save_dir}')
+            return content
         except Exception as e:
             self.logger.error(f"Error reading file {save_path}: {str(e)}")
             raise  # 重新抛出异常
+
+    def sanitize_filename(self, filename, replacement_char="_", max_length=255, platform_aware=True):
+        """
+        确保文件名合理化，处理非法字符、保留名称和长度限制
+
+        参数:
+            filename (str): 原始文件名（可以包含扩展名）
+            replacement_char (str): 替换非法字符的字符（默认为"_"）
+            max_length (int): 文件名最大长度（默认为255）
+            platform_aware (bool): 是否根据当前操作系统处理保留名称（默认为True）
+
+        返回:
+            str: 合理化后的安全文件名
+        """
+        # 1. 处理空文件名
+        if not filename:
+            return "unnamed_file"
+
+        # 2. 分离文件名和扩展名
+        stem, suffix = Path(filename).stem, Path(filename).suffix
+
+        # 3. 定义非法字符集（跨平台）
+        illegal_chars = r'[<>:"/\\|?*\x00-\x1F]'  # 包含控制字符和Windows非法字符
+
+        # 4. 替换非法字符
+        safe_stem = re.sub(illegal_chars, replacement_char, stem)
+
+        # 5. 处理特殊名称（如CON, PRN等）
+        if platform_aware:
+            reserved_names = {
+                "windows": [
+                    "CON", "PRN", "AUX", "NUL",
+                    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+                ],
+                "other": []
+            }
+            current_os = platform.system().lower()
+            reserved = reserved_names["windows"] if "windows" in current_os else reserved_names["other"]
+
+            if safe_stem.upper() in [name.upper() for name in reserved]:
+                safe_stem = f"_{safe_stem}_"
+
+        # 6. 去除首尾空格和点
+        safe_stem = safe_stem.strip().strip('.')
+
+        # 7. 处理连续替换符
+        safe_stem = re.sub(rf'{re.escape(replacement_char)}+', replacement_char, safe_stem)
+
+        # 8. 处理空文件名情况
+        if not safe_stem:
+            safe_stem = "unnamed_file"
+
+        # 9. 组合文件名和扩展名
+        safe_filename = safe_stem + suffix
+
+        # 10. 长度限制处理
+        if len(safe_filename) > max_length:
+            # 保留扩展名，截断主文件名
+            max_stem_length = max_length - len(suffix)
+            if max_stem_length > 0:
+                safe_filename = safe_stem[:max_stem_length] + suffix
+            else:
+                # 扩展名过长的情况
+                safe_filename = safe_filename[:max_length]
+
+        return safe_filename
 
     def flatten_dict(self,
                      nested_dict,
@@ -501,7 +568,7 @@ class JobBase(metaclass=JobBaseMeta):
 
         return result
 
-    def save_to_csv(self, data, file_name, date=None, index=False, **kwargs):
+    def save_to_csv(self, data, file_name, date=None):
         """
         使用 Pandas 将字典列表保存为 CSV 文件
 
@@ -517,7 +584,7 @@ class JobBase(metaclass=JobBaseMeta):
 
         示例:
             data = [{'name': 'Alice', 'age': 30}, {'name': 'Bob', 'age': 25}]
-            save_dicts_to_csv(data, 'output.csv', sep='|', encoding='gbk')
+            save_to_csv(data, 'output.csv', sep='|', encoding='gbk')
         """
         # 确定日期目录,如果没有传入参数date，则尝试获取子类初始化的date
         target_date = date or self.date
@@ -527,8 +594,20 @@ class JobBase(metaclass=JobBaseMeta):
         # 构建完整文件路径
         save_dir = os.path.join(self.folder, target_date)
         save_path = os.path.join(save_dir, file_name)
-        # 将字典列表转换为 DataFrame
-        df = pd.DataFrame(data)
+        DataFrame(data).to_csv(save_path, index=False, encoding='utf-8-sig')
 
-        # 保存到 CSV 文件
-        df.to_csv(save_path, index=index, encoding='utf-8-sig', **kwargs)
+# if __name__ == "__main__":
+#     test_cases = [
+#         "my<file>.txt",  # 包含非法字符
+#         "  CON  .jpg  ",  # Windows保留名称
+#         "..hidden.file..",  # 首尾点
+#         "",  # 空文件名
+#         "A" * 300 + ".png",  # 超长文件名
+#         "prn",  # 保留名称
+#         "folder/name\\with*path",  # 包含路径分隔符
+#         "正常文件名.docx",  # 正常中文文件名
+#     ]
+#
+#     for filename in test_cases:
+#         cleaned = sanitize_filename(filename)
+#         print(f"原始: '{filename}' => 清理后: '{cleaned}'")

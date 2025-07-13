@@ -200,8 +200,7 @@ class CollectionWrapper:
                     cursor = self.collection.find(query, projection=projection, limit=limit, skip=skip, sort=sort)
                     data = [doc for doc in cursor]
             cursor.batch_size = 10000  # 或根据实际情况调整 batch_size
-            if self.log_enabled:
-                logger.info(f"{self.db_name}:{self.collection_name} 查询到 {len(data)} 条数据, "
+            logger.info(f"{self.db_name}:{self.collection_name} 查询到 {len(data)} 条数据, "
                             f"耗时: {time.perf_counter() - start_time:.6f} 秒")
             return DocumentList(data)
         except pymongo.errors.ConnectionFailure as e:
@@ -214,6 +213,7 @@ class CollectionWrapper:
             logger.error(f"Database query failed: {str(e)}")
         except Exception as e:
             logger.error(f"查询数据时发生未知错误: {e}")
+        return None
 
     @logger.catch
     def batch_find_documents(self, query=None, projection: dict = None, batch_size: int = 1000, skip: int = 0):
@@ -369,7 +369,7 @@ class CollectionWrapper:
             raise TypeError("query_key 必须是一个字符串")
         if data_dict == {}:
             logger.warning("传入的data_dict为空字典")
-            return
+            return None
         collection_info = f"{self.db_name}:{self.collection_name}"
         result = None
         _id = 0
@@ -416,8 +416,10 @@ class CollectionWrapper:
                 return _id
             else:
                 logger.error("保存数据失败")
+                return None
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
+            return None
 
     @logger.catch
     def save_dict_list_to_collection(self, dict_list: List[dict], query_key: str = None):

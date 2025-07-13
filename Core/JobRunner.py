@@ -152,7 +152,7 @@ class JobRunner:
             EndTime = str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
             history['EndTime'] = EndTime
             self.job_instance.logger.warning(
-                f"Job finished,JobName:{history.get('JobName')} JobId:{self.job_id} RunId:{self.run_id} EndTime:{EndTime}"
+                f"Job finished, JobName:{history.get('JobName')} JobId:{self.job_id} RunId:{self.run_id} EndTime:{EndTime}"
             )
             self._History_c.save_dict_to_collection(history, 'RunId')
 
