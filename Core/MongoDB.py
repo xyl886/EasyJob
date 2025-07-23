@@ -10,11 +10,11 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Union
-
+from typing import List
+from pymongo.errors import BulkWriteError
 import pymongo.errors
 from loguru import logger
-from pymongo import MongoClient
+from pymongo import MongoClient, InsertOne
 
 
 class DocumentList:
@@ -68,7 +68,7 @@ class DocumentList:
         """
         return len(self.documents)
 
-    def dict(self, index: int = None) -> List[dict]| dict:
+    def dict(self, index: int = None) -> List[dict] | dict:
         """
         将 object_id 转换为str,此方法是为了方便后续序列化不出错
         :param index: 如果提供索引，返回对应索引位置的文档dict
@@ -201,7 +201,7 @@ class CollectionWrapper:
                     data = [doc for doc in cursor]
             cursor.batch_size = 10000  # 或根据实际情况调整 batch_size
             logger.info(f"{self.db_name}:{self.collection_name} 查询到 {len(data)} 条数据, "
-                            f"耗时: {time.perf_counter() - start_time:.6f} 秒")
+                        f"耗时: {time.perf_counter() - start_time:.6f} 秒")
             return DocumentList(data)
         except pymongo.errors.ConnectionFailure as e:
             logger.error(f"连接数据库失败: {e}")
@@ -383,6 +383,7 @@ class CollectionWrapper:
                         _id = result.inserted_id
                     except Exception as e:
                         operation_result = f"1条数据保存到mongodb {collection_info} 失败: {str(e)}, 可能已存在"
+                        raise
                 if self.log_enabled:
                     logger.info(f"{operation_result}, {data_dict}")
             elif isinstance(query_key, str) and query_key:
@@ -400,7 +401,7 @@ class CollectionWrapper:
                     }
                     with self.rlock:
                         result = self.collection.update_one(update_filter, {'$set': data_dict}, upsert=True)
-                    _id = result.upserted_id
+                    _id = 0
                     operation_result = f"数据成功更新到mongodb {collection_info}, 耗时: {time.perf_counter() - start_time:.6f} 秒"
                     if self.log_enabled:
                         logger.info(f"{operation_result}, {data_dict}")
@@ -419,6 +420,28 @@ class CollectionWrapper:
                 return None
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
+            return None
+
+    def bulk_save(self, dict_list: List[dict]):
+        if not isinstance(dict_list, list):
+            raise TypeError("dict_list 必须是一个列表")
+        if len(dict_list) == 0:
+            logger.warning("dict_list 为空")
+            return None
+        operations = []
+        for data_dict in dict_list:
+            operations.append(InsertOne(data_dict))
+        start_time = time.perf_counter()
+        collection_info = f"{self.db_name}:{self.collection_name}"
+        try:
+            result = self.collection.bulk_write(operations, ordered=False)
+            if self.log_enabled:
+                logger.info(f"{len(result.inserted_ids)} 条新数据成功保存到mongodb {collection_info}, "
+                            f"耗时: {time.perf_counter() - start_time:.6f} 秒")
+                return None
+            return None
+        except BulkWriteError as bwe:
+            logger.error(f"部分文档插入失败: {len(bwe.details['writeErrors'])} 个错误")
             return None
 
     @logger.catch

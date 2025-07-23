@@ -9,23 +9,25 @@ import datetime
 import hashlib
 import logging
 import os
-import platform
-import re
+import random
 import sys
 import time
+from concurrent.futures import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import ContextDecorator
 from functools import wraps
-from pathlib import Path
 from typing import Union, Tuple, Callable, Optional, Dict, List
 
-import pandas as pd
 import requests
+import tls_client
+import typing_extensions
+from DrissionPage import ChromiumPage
 from loguru import logger
 from pandas import DataFrame
 from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
-from Core.Config import content_type_ext
+from Core.Config import content_type_ext, DEBUG
 from Core.EntityBase import EntityBase
 from Core.MongoDB import MongoDB
 
@@ -217,14 +219,18 @@ class JobBase(metaclass=JobBaseMeta):
     def __init__(self, *args, **kwargs):
         self.job_id = kwargs.get('job_id')
         self.run_id = kwargs.get('run_id')
-        self.retry_count = kwargs.get('retry', 30)
         self.InsertUpdateTime = str(datetime.datetime.now())
         self.job_name = self.__class__.__name__
         self.default_log_level_no = logging.INFO
         self.db = MongoDB(db_name=self.job_name, log_enabled=kwargs.get('log_enabled', False))
-        self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
-        self.logger = self.log_handler.logger
-        self.log = self.log_handler.logger
+        if not DEBUG:
+            self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
+            self.logger = self.log_handler.logger
+            self.log = self.log_handler.logger
+        else:
+            from loguru import logger
+            self.logger = logger
+            self.log = logger
         if not hasattr(self, 'folder'):
             raise ValueError(f"Folder not found in {self.__class__.__name__} job_id:{self.job_id}")
         if not hasattr(self, 'date'):
@@ -243,6 +249,161 @@ class JobBase(metaclass=JobBaseMeta):
         md5 = hashlib.md5()
         md5.update(str(text).encode('utf-8'))
         return md5.hexdigest()
+
+    def _read_dump(self, dump_file_name: Optional[str] = None, read_dump: bool = True):
+        # 尝试读取缓存文件（当不强制刷新时）
+        res = None
+        if read_dump and dump_file_name is not None:
+            res = self.get_dump(file_name=dump_file_name)
+        return res
+
+    def _handle_response(self,
+                         url,
+                         response,
+                         dump_file_name,
+                         res_type,
+                         validate_str_list,
+                         ):
+        try:
+            if res_type == 'text':
+                res = response.text
+            elif res_type == 'json':
+                res = response.json()
+            elif res_type == 'content':
+                res = response.content
+            else:
+                error_msg = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
+                self.logger.error(error_msg)
+                raise JobException(error_msg)
+        except Exception as e:
+            error_msg = f"failed to parse the response: {e}"
+            self.logger.error(error_msg)
+            raise JobException(error_msg)
+        if validate_str_list is not None:
+            if not any(validate_str in res for validate_str in validate_str_list):
+                # 如果都不存在，抛出异常并列出所有缺失的字符串
+                missing_strs = [validate_str for validate_str in validate_str_list if validate_str not in res]
+                error_msg = f"请求失败, url: {url} , missing_strs: {missing_strs} "
+                self.log.error(error_msg)
+                raise JobException(error_msg)
+        if dump_file_name is not None and res is not None:
+            try:
+                self.dump(res, file_name=dump_file_name, res_type=res_type)  # 假设 dump 方法能处理不同类型数据
+            except Exception as e:
+                error_msg = f"failed to save the cache file: {e}"
+                self.logger.error(error_msg)
+                raise JobException(f"failed to save the cache file: {e}")
+        return res
+
+    def _requests(self,
+                  url: str,
+                  method: str = 'GET',
+                  params: Optional[Dict] = None,
+                  data: Optional[Dict] = None,
+                  json_data: Optional[Dict] = None,
+                  headers: Optional[Dict[str, str]] = None,
+                  cookies: Optional[Dict[str, str]] = None,
+                  timeout: Union[int, float] = 10,
+                  encoding: Optional[str] = None,
+                  allow_redirects: bool = True,
+                  raise_for_status: bool = True,
+                  proxies: Optional[Dict[str, str]] = None,
+                  ):
+        try:
+            response = requests.request(
+                method,
+                url,
+                params=params,
+                data=data,
+                json=json_data,
+                headers=headers,
+                cookies=cookies,
+                timeout=timeout,
+                allow_redirects=allow_redirects,
+                proxies=proxies
+            )
+
+            # 触发 HTTP 状态码异常检查
+            if raise_for_status:
+                response.raise_for_status()
+
+            # 手动覆盖响应编码（优先级高于响应头）
+            if encoding is not None:
+                response.encoding = encoding
+            else:
+                response.encoding = response.apparent_encoding
+        except RequestException as e:
+            self.logger.error(f"request failed: {e}")  # 可选日志记录
+            raise JobException(e)  # 触发 retry 装饰器重试
+        return response
+
+    def _tls_client(self,
+                    url: str,
+                    method: str = 'GET',
+                    params: Optional[Dict] = None,
+                    data: Optional[Dict] = None,
+                    json_data: Optional[Dict] = None,
+                    headers: Optional[Dict[str, str]] = None,
+                    cookies: Optional[Dict[str, str]] = None,
+                    allow_redirects: bool = True,
+                    proxies: Optional[Dict[str, str]] = None,
+                    ):
+        try:
+            ja3_string = "771,4865-4866-4867-49195-XXXXX-49196-49200-YYYYY-52392-49171-49172-156-157-47-53,0-23-ZZZZZ-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0"
+            ja3_string = ja3_string.replace('XXXXX', str(random.randint(49234, 65231))).replace('YYYYY', str(
+                random.randint(49234, 65231))).replace('ZZZZZ', str(random.randint(49234, 65231)))
+            tsess = tls_client.Session(ja3_string=ja3_string, random_tls_extension_order=True)
+            response = tsess.execute_request(
+                method=method,
+                url=url,
+                params=params,
+                data=data,
+                json=json_data,
+                cookies=cookies,
+                headers=headers,
+                proxy=proxies,
+                allow_redirects=allow_redirects
+            )
+        except RequestException as e:
+            self.logger.error(f"request failed: {e}")  # 可选日志记录
+            raise JobException(e)  # 触发 retry 装饰器重试
+        return response
+
+    @retry(3)
+    def download_page_tls_client(self,
+                                 url: str,
+                                 method: str = 'GET',
+                                 params: Optional[Dict] = None,
+                                 data: Optional[Dict] = None,
+                                 json_data: Optional[Dict] = None,
+                                 headers: Optional[Dict[str, str]] = None,
+                                 cookies: Optional[Dict[str, str]] = None,
+                                 timeout: Union[int, float] = 10,
+                                 encoding: Optional[str] = None,
+                                 allow_redirects: bool = True,
+                                 proxies: Optional[Dict[str, str]] = None,
+                                 dump_file_name: Optional[str] = None,
+                                 res_type: str = 'text',
+                                 read_dump: bool = True,
+                                 raise_for_status: bool = True,
+                                 validate_str_list: Optional[List[str]] = None,  # 验证字符串
+                                 ) -> Union[str, dict, bytes]:
+        res = self._read_dump(dump_file_name=dump_file_name, read_dump=read_dump)
+        # 若缓存不存在或强制刷新，则发起请求
+        if res is None or not read_dump:
+            response = self._tls_client(url=url,
+                                        method=method,
+                                        params=params,
+                                        data=data,
+                                        json_data=json_data,
+                                        headers=headers,
+                                        cookies=cookies,
+                                        allow_redirects=allow_redirects,
+                                        proxies=proxies
+                                        )
+            res = self._handle_response(url=url, response=response, res_type=res_type,
+                                        validate_str_list=validate_str_list, dump_file_name=dump_file_name)
+        return res
 
     @logger.catch(reraise=True)
     @retry(3)
@@ -284,7 +445,7 @@ class JobBase(metaclass=JobBaseMeta):
             res_type (str, optional): 返回类型，可选 'text'（文本）、'json'（字典）、'content'（二进制），默认为 'text'。
             read_dump (bool, optional): 是否读取缓存，默认为 True。
             raise_for_status (bool, optional): 是否在 HTTP 错误码时抛出异常，默认为 True。
-            validate_str_list(str,optional): 根据传入的str，对响应进行校验，决定是否重试
+            validate_str_list(str,optional): 根据传入的str，对响应进行校验，决定是否重试, 任一str符合即可
         Returns:
             str/dict/bytes: 根据 res_type 返回响应内容。
 
@@ -293,67 +454,24 @@ class JobBase(metaclass=JobBaseMeta):
             requests.exceptions.RequestException: 网络请求异常。
             requests.exceptions.HTTPError: 当 raise_for_status=True 时，HTTP 状态码非 2xx 抛出。
         """
-        if validate_str_list is None:
-            validate_str_list = []
         # 尝试读取缓存文件（当不强制刷新时）
-        res = None
-        if read_dump and dump_file_name is not None:
-            res = self.get_dump(file_name=dump_file_name)
+        res = self._read_dump(dump_file_name=dump_file_name, read_dump=read_dump)
         # 若缓存不存在或强制刷新，则发起请求
         if res is None or not read_dump:
-            try:
-                response = requests.request(
-                    method,
-                    url,
-                    params=params,
-                    data=data,
-                    json=json_data,
-                    headers=headers,
-                    cookies=cookies,
-                    timeout=timeout,
-                    allow_redirects=allow_redirects,
-                    proxies=proxies
-                )
-
-                # 触发 HTTP 状态码异常检查
-                if raise_for_status:
-                    response.raise_for_status()
-
-                # 手动覆盖响应编码（优先级高于响应头）
-                if encoding is not None:
-                    response.encoding = encoding
-                else:
-                    response.encoding = response.apparent_encoding
-            except RequestException as e:
-                self.logger.error(f"request failed: {e}")  # 可选日志记录
-                raise JobException(e)  # 触发 retry 装饰器重试
-            try:
-                if res_type == 'text':
-                    res = response.text
-                elif res_type == 'json':
-                    res = response.json()
-                elif res_type == 'content':
-                    res = response.content
-                else:
-                    error_msg = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
-                    self.logger.error(error_msg)
-                    raise JobException(error_msg)
-            except Exception as e:
-                error_msg = f"failed to parse the response: {e}"
-                self.logger.error(error_msg)
-                raise JobException(error_msg)
-            # 通过 validate_str_list对响应校验，决定是否重试
-            for each_validate_str in validate_str_list:
-                if each_validate_str not in str(res):
-                    self.logger.info(f"url: {url} str: {each_validate_str} request failed，on retry...")
-                    raise JobException(f"请求失败, {each_validate_str} not in res")
-            if dump_file_name is not None and res is not None:
-                try:
-                    self.dump(res, file_name=dump_file_name, res_type=res_type)  # 假设 dump 方法能处理不同类型数据
-                except Exception as e:
-                    error_msg = f"failed to save the cache file: {e}"
-                    self.logger.error(error_msg)
-                    raise JobException(f"failed to save the cache file: {e}")
+            response = self._requests(url=url,
+                                      method=method,
+                                      params=params,
+                                      data=data,
+                                      json_data=json_data,
+                                      headers=headers,
+                                      cookies=cookies,
+                                      timeout=timeout,
+                                      encoding=encoding,
+                                      allow_redirects=allow_redirects,
+                                      raise_for_status=raise_for_status,
+                                      proxies=proxies)
+            res = self._handle_response(url=url, response=response, res_type=res_type,
+                                        validate_str_list=validate_str_list, dump_file_name=dump_file_name)
         return res
 
     def dump(self, res_text, file_name: str, res_type: str = "text"):
@@ -393,14 +511,14 @@ class JobBase(metaclass=JobBaseMeta):
             raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
         self.logger.success(f'Saved file {file_name} to {save_folder}')
 
-    def get_dump(self, file_name: str, date=None):
+    def get_dump(self, file_name: str, date=None, check_exists: bool = False):
         """
         从指定路径读取已保存的内容，根据文件扩展名自动推断内容类型
 
         Args:
             file_name: 文件名称
             date: 可指定dump日期 %Y-%m-%d
-
+            check_exists: 仅检查文件是否存在，不读取
         Returns:
             读取到的内容，自动根据文件扩展名返回：
             - .json 文件：返回解析后的JSON对象
@@ -427,6 +545,8 @@ class JobBase(metaclass=JobBaseMeta):
         if not os.path.exists(save_path):
             self.logger.warning(f"File not found: {save_path}")
             return None
+        if check_exists and os.path.exists(save_path):
+            return True
         try:
             # 获取文件扩展名
             _, ext = os.path.splitext(file_name)
@@ -448,72 +568,27 @@ class JobBase(metaclass=JobBaseMeta):
             self.logger.error(f"Error reading file {save_path}: {str(e)}")
             raise  # 重新抛出异常
 
-    def sanitize_filename(self, filename, replacement_char="_", max_length=255, platform_aware=True):
+    def sanitize_filename(self, filename, replacement_text="_", max_length=255, platform_aware=True):
         """
         确保文件名合理化，处理非法字符、保留名称和长度限制
 
         参数:
             filename (str): 原始文件名（可以包含扩展名）
-            replacement_char (str): 替换非法字符的字符（默认为"_"）
+            replacement_text (str): 替换非法字符的字符（默认为"_"）
             max_length (int): 文件名最大长度（默认为255）
             platform_aware (bool): 是否根据当前操作系统处理保留名称（默认为True）
 
         返回:
             str: 合理化后的安全文件名
         """
-        # 1. 处理空文件名
-        if not filename:
-            return "unnamed_file"
+        from pathvalidate import sanitize_filename
 
-        # 2. 分离文件名和扩展名
-        stem, suffix = Path(filename).stem, Path(filename).suffix
-
-        # 3. 定义非法字符集（跨平台）
-        illegal_chars = r'[<>:"/\\|?*\x00-\x1F]'  # 包含控制字符和Windows非法字符
-
-        # 4. 替换非法字符
-        safe_stem = re.sub(illegal_chars, replacement_char, stem)
-
-        # 5. 处理特殊名称（如CON, PRN等）
-        if platform_aware:
-            reserved_names = {
-                "windows": [
-                    "CON", "PRN", "AUX", "NUL",
-                    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-                    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-                ],
-                "other": []
-            }
-            current_os = platform.system().lower()
-            reserved = reserved_names["windows"] if "windows" in current_os else reserved_names["other"]
-
-            if safe_stem.upper() in [name.upper() for name in reserved]:
-                safe_stem = f"_{safe_stem}_"
-
-        # 6. 去除首尾空格和点
-        safe_stem = safe_stem.strip().strip('.')
-
-        # 7. 处理连续替换符
-        safe_stem = re.sub(rf'{re.escape(replacement_char)}+', replacement_char, safe_stem)
-
-        # 8. 处理空文件名情况
-        if not safe_stem:
-            safe_stem = "unnamed_file"
-
-        # 9. 组合文件名和扩展名
-        safe_filename = safe_stem + suffix
-
-        # 10. 长度限制处理
-        if len(safe_filename) > max_length:
-            # 保留扩展名，截断主文件名
-            max_stem_length = max_length - len(suffix)
-            if max_stem_length > 0:
-                safe_filename = safe_stem[:max_stem_length] + suffix
-            else:
-                # 扩展名过长的情况
-                safe_filename = safe_filename[:max_length]
-
-        return safe_filename
+        return sanitize_filename(
+            filename,
+            replacement_text=replacement_text,
+            max_len=max_length,
+            platform="auto",  # 自动检测操作系统
+        )
 
     def flatten_dict(self,
                      nested_dict,
@@ -596,18 +671,48 @@ class JobBase(metaclass=JobBaseMeta):
         save_path = os.path.join(save_dir, file_name)
         DataFrame(data).to_csv(save_path, index=False, encoding='utf-8-sig')
 
-# if __name__ == "__main__":
-#     test_cases = [
-#         "my<file>.txt",  # 包含非法字符
-#         "  CON  .jpg  ",  # Windows保留名称
-#         "..hidden.file..",  # 首尾点
-#         "",  # 空文件名
-#         "A" * 300 + ".png",  # 超长文件名
-#         "prn",  # 保留名称
-#         "folder/name\\with*path",  # 包含路径分隔符
-#         "正常文件名.docx",  # 正常中文文件名
-#     ]
-#
-#     for filename in test_cases:
-#         cleaned = sanitize_filename(filename)
-#         print(f"原始: '{filename}' => 清理后: '{cleaned}'")
+    def ThreadRun(self, run_list, _fun, chunk_size=16):
+        run_list = list(run_list)
+        with ThreadPoolExecutor(max_workers=chunk_size) as executor:
+            for run_info in run_list:
+                executor.submit(_fun, run_info)
+
+    def MultiTabs(self, tab_list, _fun, chunk_size=10):
+        '''
+        通用的多标签页并发处理函数
+
+        :param tab_list: 待处理的任务列表（每个元素会传递给_fun）
+        :param _fun: 处理单个任务的函数，必须接受两个参数：tab(ChromiumTab) 和 tab_info
+        :param chunk_size: 每组并发任务数（默认10）
+        '''
+        tab_list = list(tab_list)
+        grouped = [
+            tab_list[i:i + chunk_size]
+            for i in range(0, len(tab_list), chunk_size)
+        ]
+        for group in grouped:
+            # 提交当前组的所有任务
+            self.page = ChromiumPage()
+            tabs = []
+            for index, detail in enumerate(group):
+                if index == 0:
+                    tab = self.page.get_tab(0)
+                else:
+                    tab = self.page.new_tab()
+                tabs.append(tab)
+            with ThreadPoolExecutor(max_workers=chunk_size) as executor:
+                futures = []
+                for tab, tab_info in zip(tabs, group):
+                    future = executor.submit(_fun, tab, tab_info)
+                    futures.append(future)
+
+                # 等待当前组所有任务完成（带异常捕获）
+            for future in as_completed(futures):
+                try:
+                    future.result()  # 获取结果（会抛出异常）
+                except Exception as e:
+                    # 实际项目中替换为日志记录
+                    print(f"Task failed: {e}")
+                    # 可选：根据需求决定是否继续
+                    # raise  # 如果需要中断整个流程
+            self.page.close_tabs(tabs)
