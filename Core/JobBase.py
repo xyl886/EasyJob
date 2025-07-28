@@ -20,7 +20,6 @@ from typing import Union, Tuple, Callable, Optional, Dict, List
 
 import requests
 import tls_client
-import typing_extensions
 from DrissionPage import ChromiumPage
 from loguru import logger
 from pandas import DataFrame
@@ -37,18 +36,21 @@ class JobException(Exception):
     pass
 
 
+capture_exceptions = (RequestException, ReadTimeout, HTTPError, ConnectTimeout, JobException)
+
+
 def retry(
-        retries: int = 5,  # 重试次数
+        default_count: int = 3,  # 重试次数
         delay: Union[int, float] = 1,  # 延迟时间
         max_delay: Union[int, float] = 8,  # 最大延迟时间
         backoff: Union[int, float] = 2,  # 延迟倍数
-        exceptions: Tuple[Exception] = (RequestException, ReadTimeout, HTTPError, ConnectTimeout, JobException),
-        # 捕获的异常类型
+        exceptions: Tuple[Exception] = capture_exceptions,  # 捕获的异常类型
         log_args: bool = True  # 是否记录参数
 ):
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            retries = kwargs.pop('retry_count', default_count)
             func_name = func.__name__
             logger.debug(f"Function called: {func_name}")
 
@@ -72,18 +74,22 @@ def retry(
                         time.sleep(sleep_time)
                     else:
                         # 最后一次失败后记录错误详情
+                        kwargs_copy = kwargs.copy()
+                        kwargs_copy.pop('headers', None)
                         error_log = (
                             f"[FINAL FAILURE] {func_name} after {retries} retries\n"
-                            f"Params: args={args}, kwargs={kwargs}\n"
+                            f"Params: args={args}, kwargs={kwargs_copy}\n"
                             f"Error: {str(final_error)}"
                         )
                         logger.error(error_log)
                         raise final_error
                 except Exception as unexpected_error:
                     # 捕获未预期的异常，立即终止并记录
+                    kwargs_copy = kwargs.copy()
+                    kwargs_copy.pop('headers', None)
                     logger.critical(
                         f"[UNEXPECTED ERROR] Attempt {attempt} failed:\n"
-                        f"Params: args={args}, kwargs={kwargs}\n"
+                        f"Params: args={args}, kwargs={kwargs_copy}\n"
                         f"Error: {unexpected_error}"
                     )
                     raise unexpected_error
@@ -223,14 +229,17 @@ class JobBase(metaclass=JobBaseMeta):
         self.job_name = self.__class__.__name__
         self.default_log_level_no = logging.INFO
         self.db = MongoDB(db_name=self.job_name, log_enabled=kwargs.get('log_enabled', False))
-        if not DEBUG:
-            self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
-            self.logger = self.log_handler.logger
-            self.log = self.log_handler.logger
-        else:
-            from loguru import logger
-            self.logger = logger
-            self.log = logger
+        self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
+        self.logger = self.log_handler.logger
+        self.log = self.log_handler.logger
+        # if not DEBUG:
+        #     self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
+        #     self.logger = self.log_handler.logger
+        #     self.log = self.log_handler.logger
+        # else:
+        #     from loguru import logger
+        #     self.logger = logger
+        #     self.log = logger
         if not hasattr(self, 'folder'):
             raise ValueError(f"Folder not found in {self.__class__.__name__} job_id:{self.job_id}")
         if not hasattr(self, 'date'):
@@ -322,7 +331,6 @@ class JobBase(metaclass=JobBaseMeta):
                 allow_redirects=allow_redirects,
                 proxies=proxies
             )
-
             # 触发 HTTP 状态码异常检查
             if raise_for_status:
                 response.raise_for_status()
@@ -369,6 +377,16 @@ class JobBase(metaclass=JobBaseMeta):
             raise JobException(e)  # 触发 retry 装饰器重试
         return response
 
+    def _update_cookies_from_response(self, response):
+        """
+        从响应中提取 cookies 并更新到 headers 中
+
+        参数:
+            response: requests 响应对象
+        """
+        cookie_str = '; '.join([f"{c.name}={c.value}" for c in response.cookies])
+        self.headers['Cookie'] = cookie_str
+
     @retry(3)
     def download_page_tls_client(self,
                                  url: str,
@@ -387,6 +405,7 @@ class JobBase(metaclass=JobBaseMeta):
                                  read_dump: bool = True,
                                  raise_for_status: bool = True,
                                  validate_str_list: Optional[List[str]] = None,  # 验证字符串
+                                 retry_count=3,
                                  ) -> Union[str, dict, bytes]:
         res = self._read_dump(dump_file_name=dump_file_name, read_dump=read_dump)
         # 若缓存不存在或强制刷新，则发起请求
@@ -396,8 +415,8 @@ class JobBase(metaclass=JobBaseMeta):
                                         params=params,
                                         data=data,
                                         json_data=json_data,
-                                        headers=headers,
                                         cookies=cookies,
+                                        headers=headers,
                                         allow_redirects=allow_redirects,
                                         proxies=proxies
                                         )
@@ -405,9 +424,8 @@ class JobBase(metaclass=JobBaseMeta):
                                         validate_str_list=validate_str_list, dump_file_name=dump_file_name)
         return res
 
-    @logger.catch(reraise=True)
-    @retry(3)
-    def send_request(
+    @retry(1)
+    def download_page(
             self,
             url: str,
             method: str = 'GET',
@@ -463,8 +481,8 @@ class JobBase(metaclass=JobBaseMeta):
                                       params=params,
                                       data=data,
                                       json_data=json_data,
-                                      headers=headers,
                                       cookies=cookies,
+                                      headers=headers,
                                       timeout=timeout,
                                       encoding=encoding,
                                       allow_redirects=allow_redirects,
@@ -643,14 +661,14 @@ class JobBase(metaclass=JobBaseMeta):
 
         return result
 
-    def save_to_csv(self, data, file_name, date=None):
+    def save_to_csv(self, data_list: List[dict], file_name: str, date=None):
         """
         使用 Pandas 将字典列表保存为 CSV 文件
 
         参数:
-            data: list of dict, 要保存的数据（每个字典代表一行）
+            data_list: list of dict, 要保存的数据（每个字典代表一行）
             filename: str, 目标 CSV 文件名
-            index: bool, 是否包含行索引（默认为 False）
+            date: 日期文件夹(不指定则从实际job类获取)
             **kwargs: 其他 pandas.DataFrame.to_csv() 支持的参数
                 - sep: 分隔符（默认为逗号）
                 - encoding: 文件编码（默认为 'utf-8'）
@@ -665,24 +683,30 @@ class JobBase(metaclass=JobBaseMeta):
         target_date = date or self.date
         if not target_date:
             raise ValueError("Date must be provided or set in instance")
-
         # 构建完整文件路径
         save_dir = os.path.join(self.folder, target_date)
         save_path = os.path.join(save_dir, file_name)
-        DataFrame(data).to_csv(save_path, index=False, encoding='utf-8-sig')
+        DataFrame(data_list).to_csv(save_path, index=False, encoding='utf-8')
 
-    def ThreadRun(self, run_list, _fun, chunk_size=16):
+    def ThreadRun(self, _fun, run_list, chunk_size=16, *args, **kwargs):
+        """
+         使用线程池并发执行任务
+         该函数创建一个线程池，将任务列表中的每个元素分配给不同的线程执行。
+         支持传递自定义参数给任务函数，并自动管理线程池的生命周期。
+         :param _fun: 要执行的任务函数，第一个参数必须接收run_list中的元素
+         :param run_list: 任务数据列表，每个元素将作为参数传递给任务函数，必须接受 run_info
+         :param chunk_size: 线程池最大工作线程数，默认16
+         """
         run_list = list(run_list)
         with ThreadPoolExecutor(max_workers=chunk_size) as executor:
             for run_info in run_list:
-                executor.submit(_fun, run_info)
+                executor.submit(_fun, run_info, *args, **kwargs)
 
-    def MultiTabs(self, tab_list, _fun, chunk_size=10):
+    def MultiTabs(self, _fun, tab_list, chunk_size=10, *args, **kwargs):
         '''
         通用的多标签页并发处理函数
-
-        :param tab_list: 待处理的任务列表（每个元素会传递给_fun）
         :param _fun: 处理单个任务的函数，必须接受两个参数：tab(ChromiumTab) 和 tab_info
+        :param tab_list: 待处理的任务列表（每个元素会传递给_fun）
         :param chunk_size: 每组并发任务数（默认10）
         '''
         tab_list = list(tab_list)
@@ -694,16 +718,13 @@ class JobBase(metaclass=JobBaseMeta):
             # 提交当前组的所有任务
             self.page = ChromiumPage()
             tabs = []
+            futures = []
             for index, detail in enumerate(group):
-                if index == 0:
-                    tab = self.page.get_tab(0)
-                else:
-                    tab = self.page.new_tab()
+                tab = self.page.new_tab() if index > 0 else self.page.get_tab(0)
                 tabs.append(tab)
             with ThreadPoolExecutor(max_workers=chunk_size) as executor:
-                futures = []
                 for tab, tab_info in zip(tabs, group):
-                    future = executor.submit(_fun, tab, tab_info)
+                    future = executor.submit(_fun, tab, tab_info, *args, **kwargs)
                     futures.append(future)
 
                 # 等待当前组所有任务完成（带异常捕获）

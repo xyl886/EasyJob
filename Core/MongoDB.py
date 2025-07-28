@@ -160,7 +160,7 @@ class CollectionWrapper:
 
         return unique_list
 
-    @logger.catch
+    @logger.catch(reraise= True)
     def find_documents(self,
                        query: dict = None,
                        projection: dict = None,
@@ -215,7 +215,7 @@ class CollectionWrapper:
             logger.error(f"查询数据时发生未知错误: {e}")
         return None
 
-    @logger.catch
+    @logger.catch(reraise= True)
     def batch_find_documents(self, query=None, projection: dict = None, batch_size: int = 1000, skip: int = 0):
         """
         分批查询文档，每次查询`batch_size`条数据。
@@ -239,7 +239,7 @@ class CollectionWrapper:
             yield docs_batch
             skip += batch_size
 
-    @logger.catch
+    @logger.catch(reraise= True)
     def stream_find_documents(self, query: dict, projection: dict = None, batch_size: int = 1000, skip: int = 0):
         """
         流式查询文档，逐条返回匹配查询条件的文档。
@@ -304,7 +304,7 @@ class CollectionWrapper:
         #                         sheet_name=sheet_name,
         #                         check_columns=check_columns)
 
-    @logger.catch
+    @logger.catch(reraise= True)
     def update_documents(self, data_dict, query_key: str):
         """
         根据传入的字典的某个key的值进行查询，判断是否已经存在相同记录，
@@ -352,7 +352,7 @@ class CollectionWrapper:
             logger.error(f"更新数据时发生未知错误: {e}")
             raise
 
-    @logger.catch
+    @logger.catch(reraise= True)
     def save_dict_to_collection(self, data_dict: dict, query_key: str = None):
         """
         根据传入的字典的某个key的值进行查询，判断是否已经存在相同记录，
@@ -417,10 +417,10 @@ class CollectionWrapper:
                 return _id
             else:
                 logger.error("保存数据失败")
-                return None
+                raise
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
-            return None
+            raise
 
     def bulk_save(self, dict_list: List[dict]):
         if not isinstance(dict_list, list):
@@ -444,7 +444,6 @@ class CollectionWrapper:
             logger.error(f"部分文档插入失败: {len(bwe.details['writeErrors'])} 个错误")
             return None
 
-    @logger.catch
     def save_dict_list_to_collection(self, dict_list: List[dict], query_key: str = None):
         """
         将字典列表批量保存至 MongoDB。
