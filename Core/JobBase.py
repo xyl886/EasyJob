@@ -7,6 +7,7 @@
 """
 import datetime
 import hashlib
+import json
 import logging
 import os
 import random
@@ -26,7 +27,7 @@ from pandas import DataFrame
 from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
-from Core.Config import content_type_ext, DEBUG
+from Core.Config import content_type_ext
 from Core.EntityBase import EntityBase
 from Core.MongoDB import MongoDB
 
@@ -45,53 +46,33 @@ def retry(
         max_delay: Union[int, float] = 8,  # 最大延迟时间
         backoff: Union[int, float] = 2,  # 延迟倍数
         exceptions: Tuple[Exception] = capture_exceptions,  # 捕获的异常类型
-        log_args: bool = True  # 是否记录参数
 ):
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
             retries = kwargs.pop('retry_count', default_count)
+            request_url = args[1] if len(args) < 2 or args[1] is not None else (
+                kwargs.get('url') if 'url' in kwargs else None)
             func_name = func.__name__
-            logger.debug(f"Function called: {func_name}")
-
-            if log_args:
-                logger.debug(f"Params - args: {args}, kwargs: {kwargs}")
-
             for attempt in range(retries + 1):
                 try:
                     response = func(*args, **kwargs)
-                    logger.debug(f"[{func_name}] Attempt {attempt + 1} success")
+                    logger.debug(f"[Success] {func_name} Attempt {attempt + 1} success, url: {request_url}")
                     return response
-
                 except exceptions as e:
                     final_error = e
                     if attempt < retries:
                         sleep_time = min(delay * (backoff ** attempt), max_delay)
                         logger.error(
-                            f"[{func_name}] Attempt {attempt + 1} failed: {str(e)} "
-                            f"Retrying in {sleep_time}s..."
-                        )
+                            f"[Failure] {func_name} Attempt {attempt + 1} failed: {str(e)}, url: {request_url}, retrying in {sleep_time}s...")
                         time.sleep(sleep_time)
                     else:
-                        # 最后一次失败后记录错误详情
-                        kwargs_copy = kwargs.copy()
-                        kwargs_copy.pop('headers', None)
-                        error_log = (
-                            f"[FINAL FAILURE] {func_name} after {retries} retries\n"
-                            f"Params: args={args}, kwargs={kwargs_copy}\n"
-                            f"Error: {str(final_error)}"
-                        )
-                        logger.error(error_log)
+                        logger.error(
+                            f"[FINAL FAILURE] {func_name} after {retries} retries, failed: {str(final_error)}, url: {request_url} ")
                         raise final_error
                 except Exception as unexpected_error:
-                    # 捕获未预期的异常，立即终止并记录
-                    kwargs_copy = kwargs.copy()
-                    kwargs_copy.pop('headers', None)
                     logger.critical(
-                        f"[UNEXPECTED ERROR] Attempt {attempt} failed:\n"
-                        f"Params: args={args}, kwargs={kwargs_copy}\n"
-                        f"Error: {unexpected_error}"
-                    )
+                        f"[UNEXPECTED ERROR] Attempt {attempt} failed: {str(unexpected_error)}, url: {request_url} ")
                     raise unexpected_error
             return None
 
@@ -213,18 +194,12 @@ class JobBase(metaclass=JobBaseMeta):
                 if job_id in JobBase._registry:
                     raise ValueError(f"JobId {job_id} already registered by {JobBase._registry[job_id].__name__}")
                 JobBase._registry[job_id] = cls
-        # 处理 folder 路径的代码保持不变
-        if hasattr(cls, 'folder'):
-            cls.folder = os.path.join(os.path.dirname(__file__), cls.folder)
-        # 获取date
-        if hasattr(cls, 'date'):
-            cls.date = cls.date
-        else:
-            cls.date = str(datetime.datetime.now().strftime("%Y-%m-%d"))
 
     def __init__(self, *args, **kwargs):
         self.job_id = kwargs.get('job_id')
         self.run_id = kwargs.get('run_id')
+        self.folder = kwargs.get('folder') or os.path.dirname(os.path.abspath(__file__))
+        self.date = kwargs.get('date') or datetime.datetime.now().strftime("%Y-%m-%d")
         self.InsertUpdateTime = str(datetime.datetime.now())
         self.job_name = self.__class__.__name__
         self.default_log_level_no = logging.INFO
@@ -232,18 +207,6 @@ class JobBase(metaclass=JobBaseMeta):
         self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
         self.logger = self.log_handler.logger
         self.log = self.log_handler.logger
-        # if not DEBUG:
-        #     self.log_handler = MongoDBHandler(db=self.db, db_name=self.job_name, job_id=self.job_id, run_id=self.run_id)
-        #     self.logger = self.log_handler.logger
-        #     self.log = self.log_handler.logger
-        # else:
-        #     from loguru import logger
-        #     self.logger = logger
-        #     self.log = logger
-        if not hasattr(self, 'folder'):
-            raise ValueError(f"Folder not found in {self.__class__.__name__} job_id:{self.job_id}")
-        if not hasattr(self, 'date'):
-            self.date = str(datetime.datetime.now().strftime("%Y-%m-%d"))
 
     def on_run(self):
         """任务执行入口，子类重写此方法"""
@@ -266,43 +229,45 @@ class JobBase(metaclass=JobBaseMeta):
             res = self.get_dump(file_name=dump_file_name)
         return res
 
-    def _handle_response(self,
-                         url,
-                         response,
-                         dump_file_name,
-                         res_type,
-                         validate_str_list,
-                         ):
-        try:
-            if res_type == 'text':
-                res = response.text
-            elif res_type == 'json':
-                res = response.json()
-            elif res_type == 'content':
-                res = response.content
-            else:
-                error_msg = f"failed to parse the response not supported res_type: {res_type}，可选 'text', 'json', 'content'"
-                self.logger.error(error_msg)
-                raise JobException(error_msg)
-        except Exception as e:
-            error_msg = f"failed to parse the response: {e}"
-            self.logger.error(error_msg)
-            raise JobException(error_msg)
-        if validate_str_list is not None:
-            if not any(validate_str in res for validate_str in validate_str_list):
-                # 如果都不存在，抛出异常并列出所有缺失的字符串
-                missing_strs = [validate_str for validate_str in validate_str_list if validate_str not in res]
-                error_msg = f"请求失败, url: {url} , missing_strs: {missing_strs} "
-                self.log.error(error_msg)
-                raise JobException(error_msg)
-        if dump_file_name is not None and res is not None:
-            try:
-                self.dump(res, file_name=dump_file_name, res_type=res_type)  # 假设 dump 方法能处理不同类型数据
-            except Exception as e:
-                error_msg = f"failed to save the cache file: {e}"
-                self.logger.error(error_msg)
-                raise JobException(f"failed to save the cache file: {e}")
+    def _handle_response(self, url, response, dump_file_name=None, res_type='json', validate_str_list=None):
+        """解析响应并校验，返回安全值"""
+        res = self._parse_response(response, res_type)
+        if not res:
+            self.log.error(f"{url}, no response")
+            return None
+        if not self._validate_response(res, validate_str_list):
+            self.log.error(f"{url}, missing_strs: {validate_str_list}")
+            return None  # 安全默认值
+        if not dump_file_name:
+            return res
+        self._dump_response(res, dump_file_name, res_type)
         return res
+
+    def _parse_response(self, response, res_type):
+        if res_type == 'text':
+            return response.text
+        elif res_type == 'json':
+            return response.json()
+        elif res_type == 'content':
+            return response.content
+        else:
+            self.log.error(f"不支持的 res_type: {res_type}")
+            return None
+
+    def _validate_response(self, res, validate_str_list):
+        if not validate_str_list:
+            return True
+        res_str = str(res)
+        has_strs = [s for s in validate_str_list if s in res_str]
+        if not has_strs:
+            return False
+        return len(has_strs) > 0
+
+    def _dump_response(self, res, dump_file_name, res_type):
+        try:
+            self.dump(res, file_name=dump_file_name, res_type=res_type)
+        except Exception as e:
+            self.log.warning(f"保存缓存失败: {e}")  # 不 raise，只记录
 
     def _requests(self,
                   url: str,
@@ -312,7 +277,7 @@ class JobBase(metaclass=JobBaseMeta):
                   json_data: Optional[Dict] = None,
                   headers: Optional[Dict[str, str]] = None,
                   cookies: Optional[Dict[str, str]] = None,
-                  timeout: Union[int, float] = 10,
+                  timeout: Union[int, float] = 15,
                   encoding: Optional[str] = None,
                   allow_redirects: bool = True,
                   raise_for_status: bool = True,
@@ -341,7 +306,7 @@ class JobBase(metaclass=JobBaseMeta):
             else:
                 response.encoding = response.apparent_encoding
         except RequestException as e:
-            self.logger.error(f"request failed: {e}")  # 可选日志记录
+            self.log.error(f"request failed: {e}")  # 可选日志记录
             raise JobException(e)  # 触发 retry 装饰器重试
         return response
 
@@ -353,6 +318,7 @@ class JobBase(metaclass=JobBaseMeta):
                     json_data: Optional[Dict] = None,
                     headers: Optional[Dict[str, str]] = None,
                     cookies: Optional[Dict[str, str]] = None,
+                    timeout: Union[int, float] = 30,
                     allow_redirects: bool = True,
                     proxies: Optional[Dict[str, str]] = None,
                     ):
@@ -369,23 +335,14 @@ class JobBase(metaclass=JobBaseMeta):
                 json=json_data,
                 cookies=cookies,
                 headers=headers,
+                timeout_seconds=timeout,
                 proxy=proxies,
                 allow_redirects=allow_redirects
             )
         except RequestException as e:
-            self.logger.error(f"request failed: {e}")  # 可选日志记录
+            self.log.error(f"request failed: {e}")  # 可选日志记录
             raise JobException(e)  # 触发 retry 装饰器重试
         return response
-
-    def _update_cookies_from_response(self, response):
-        """
-        从响应中提取 cookies 并更新到 headers 中
-
-        参数:
-            response: requests 响应对象
-        """
-        cookie_str = '; '.join([f"{c.name}={c.value}" for c in response.cookies])
-        self.headers['Cookie'] = cookie_str
 
     @retry(3)
     def download_page_tls_client(self,
@@ -396,7 +353,7 @@ class JobBase(metaclass=JobBaseMeta):
                                  json_data: Optional[Dict] = None,
                                  headers: Optional[Dict[str, str]] = None,
                                  cookies: Optional[Dict[str, str]] = None,
-                                 timeout: Union[int, float] = 10,
+                                 timeout: Union[int, float] = 30,
                                  encoding: Optional[str] = None,
                                  allow_redirects: bool = True,
                                  proxies: Optional[Dict[str, str]] = None,
@@ -417,14 +374,14 @@ class JobBase(metaclass=JobBaseMeta):
                                         json_data=json_data,
                                         cookies=cookies,
                                         headers=headers,
+                                        timeout=timeout,
                                         allow_redirects=allow_redirects,
-                                        proxies=proxies
-                                        )
+                                        proxies=proxies)
             res = self._handle_response(url=url, response=response, res_type=res_type,
-                                        validate_str_list=validate_str_list, dump_file_name=dump_file_name)
+                                        dump_file_name=dump_file_name, validate_str_list=validate_str_list)
         return res
 
-    @retry(1)
+    @retry(3)
     def download_page(
             self,
             url: str,
@@ -434,7 +391,7 @@ class JobBase(metaclass=JobBaseMeta):
             json_data: Optional[Dict] = None,
             headers: Optional[Dict[str, str]] = None,
             cookies: Optional[Dict[str, str]] = None,
-            timeout: Union[int, float] = 10,
+            timeout: Union[int, float] = 30,
             encoding: Optional[str] = None,
             allow_redirects: bool = True,
             proxies: Optional[Dict[str, str]] = None,
@@ -482,14 +439,14 @@ class JobBase(metaclass=JobBaseMeta):
                                       data=data,
                                       json_data=json_data,
                                       cookies=cookies,
+                                      proxies=proxies,
                                       headers=headers,
                                       timeout=timeout,
                                       encoding=encoding,
                                       allow_redirects=allow_redirects,
-                                      raise_for_status=raise_for_status,
-                                      proxies=proxies)
+                                      raise_for_status=raise_for_status)
             res = self._handle_response(url=url, response=response, res_type=res_type,
-                                        validate_str_list=validate_str_list, dump_file_name=dump_file_name)
+                                        dump_file_name=dump_file_name, validate_str_list=validate_str_list)
         return res
 
     def dump(self, res_text, file_name: str, res_type: str = "text"):
@@ -508,6 +465,9 @@ class JobBase(metaclass=JobBaseMeta):
             raise ValueError("file_name cannot be None")
         if res_text is None:
             raise ValueError("res_text cannot be None")
+        missing = [name for name, val in (("folder", self.folder), ("date", self.date)) if not val]
+        if missing:
+            raise ValueError(f"Missing required argument(s): {', '.join(missing)}")
         # 自动创建父目录（如果不存在）
         save_folder = os.path.join(self.folder, self.date)
         file_path = os.path.join(save_folder, file_name)
@@ -523,11 +483,11 @@ class JobBase(metaclass=JobBaseMeta):
             with open(file_path, "w", encoding="utf-8", errors="replace") as f:
                 json.dump(res_text, f, ensure_ascii=False, indent=2)
         elif res_type == "content":
-            with open(file_path, "wb", errors="replace") as f:
+            with open(file_path, "wb") as f:
                 f.write(res_text)
         else:
             raise ValueError(f"Invalid res_type: {res_type}. Must be one of 'text', 'json', or 'content'")
-        self.logger.success(f'Saved file {file_name} to {save_folder}')
+        self.log.success(f'Saved file {file_name} to {save_folder}')
 
     def get_dump(self, file_name: str, date=None, check_exists: bool = False):
         """
@@ -542,20 +502,15 @@ class JobBase(metaclass=JobBaseMeta):
             - .json 文件：返回解析后的JSON对象
             - 图片等二进制文件：返回二进制内容
             - 其他：返回文本内容
-
-        Raises:
-            FileNotFoundError: 文件不存在时抛出
-            ValueError: 文件名无效时抛出
         """
         # 参数验证
         if not file_name or not isinstance(file_name, str) or file_name is None:
             raise ValueError("file_name cannot be empty")
 
-        # 确定日期目录,如果没有传入参数date，则尝试获取子类初始化的date
         target_date = date or self.date
-        if not target_date:
-            raise ValueError("Args date must be provided or set in instance")
-
+        missing = [name for name, val in (("folder", self.folder), ("date", target_date)) if not val]
+        if missing:
+            raise ValueError(f"Missing required argument(s): {', '.join(missing)}")
         # 构建完整文件路径
         save_dir = os.path.join(self.folder, target_date)
         save_path = os.path.join(save_dir, file_name)
@@ -583,10 +538,10 @@ class JobBase(metaclass=JobBaseMeta):
             self.logger.success(f'Success read cache {file_name} form {save_dir}')
             return content
         except Exception as e:
-            self.logger.error(f"Error reading file {save_path}: {str(e)}")
+            self.logger.exception(f"Error reading file {save_path}: {str(e)}")
             raise  # 重新抛出异常
 
-    def sanitize_filename(self, filename, replacement_text="_", max_length=255, platform_aware=True):
+    def sanitize_filename(self, filename, replacement_text="_", max_length=255, platform="auto"):
         """
         确保文件名合理化，处理非法字符、保留名称和长度限制
 
@@ -605,60 +560,27 @@ class JobBase(metaclass=JobBaseMeta):
             filename,
             replacement_text=replacement_text,
             max_len=max_length,
-            platform="auto",  # 自动检测操作系统
+            platform=platform,  # 自动检测操作系统
         )
 
-    def flatten_dict(self,
-                     nested_dict,
-                     parent_key='',
-                     key_separator='_',
-                     value_separator=',',
-                     result=None,
-                     key_registry=None
-                     ) -> dict:
+    def to_json(self, value):
+        """转成 JSON 字符串，空值返回 None"""
+        return json.dumps(value, ensure_ascii=False) if value not in (None, [], {}) else None
+
+    def flatten_dict(self, data: dict) -> dict:
         """
-        将多层嵌套字典转换为单层字典，自动处理键名冲突
-
-        参数:
-            nested_dict: 要扁平化的嵌套字典
-            parent_key: 父级键前缀(递归使用)
-            key_separator: 键名连接符
-            value_separator: 值连接符
-            result: 结果字典(递归使用)
-            key_registry: 键名注册表(递归使用)
-
-        返回:
-            扁平化后的单层字典
+        把传入字典的所有非基础类型（dict、list）转成 JSON 字符串。
+        保证返回的字典只有一层。
         """
-        if result is None:
-            result = {}
-        if key_registry is None:
-            key_registry = {}
+        if not isinstance(data, dict):
+            raise ValueError("输入必须是字典类型")
 
-        for key, value in nested_dict.items():
-            # 生成新键名
-            new_key = f"{parent_key}{key_separator}{key}" if parent_key else key
-
-            if isinstance(value, dict):
-                # 递归处理子字典
-                self.flatten_dict(value, new_key, key_separator, value_separator, result, key_registry)
+        result = {}
+        for k, v in data.items():
+            if isinstance(v, (dict, list)):
+                result[k] = self.to_json(v)
             else:
-                # 处理键名冲突
-                final_key = new_key
-                if new_key in key_registry:
-                    # 更新计数并生成唯一键名
-                    key_registry[new_key] += 1
-                    final_key = f"{new_key}{key_separator}{key_registry[new_key]}"
-                else:
-                    # 首次出现的键名，注册为0
-                    key_registry[new_key] = 0
-
-                # 添加键值对
-                if isinstance(value, list):
-                    result[final_key] = value_separator.join(value)
-                else:
-                    result[final_key] = value
-
+                result[k] = v
         return result
 
     def save_to_csv(self, data_list: List[dict], file_name: str, date=None):
@@ -703,19 +625,18 @@ class JobBase(metaclass=JobBaseMeta):
                 executor.submit(_fun, run_info, *args, **kwargs)
 
     def MultiTabs(self, _fun, tab_list, chunk_size=10, *args, **kwargs):
-        '''
-        通用的多标签页并发处理函数
+        """
+        通用的 DrissionPage 多标签页并发处理函数
         :param _fun: 处理单个任务的函数，必须接受两个参数：tab(ChromiumTab) 和 tab_info
         :param tab_list: 待处理的任务列表（每个元素会传递给_fun）
         :param chunk_size: 每组并发任务数（默认10）
-        '''
+        """
         tab_list = list(tab_list)
         grouped = [
             tab_list[i:i + chunk_size]
             for i in range(0, len(tab_list), chunk_size)
         ]
         for group in grouped:
-            # 提交当前组的所有任务
             self.page = ChromiumPage()
             tabs = []
             futures = []
@@ -726,14 +647,9 @@ class JobBase(metaclass=JobBaseMeta):
                 for tab, tab_info in zip(tabs, group):
                     future = executor.submit(_fun, tab, tab_info, *args, **kwargs)
                     futures.append(future)
-
-                # 等待当前组所有任务完成（带异常捕获）
             for future in as_completed(futures):
                 try:
                     future.result()  # 获取结果（会抛出异常）
                 except Exception as e:
-                    # 实际项目中替换为日志记录
                     print(f"Task failed: {e}")
-                    # 可选：根据需求决定是否继续
-                    # raise  # 如果需要中断整个流程
             self.page.close_tabs(tabs)

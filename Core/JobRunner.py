@@ -68,7 +68,7 @@ class JobRunner:
             )
             self._History_c.save_dict_to_collection(history.dict(), 'RunId')
         except Exception as e:
-            logger.error(f"CRITICAL: Job initialization failed - {str(e)}")
+            logger.exception(f"CRITICAL: Job initialization failed - {str(e)}")
             raise
 
     # ✅ 使用示例
@@ -127,11 +127,11 @@ class JobRunner:
 
     def _execute_core(self):
         """实际执行任务的方法（线程中运行）"""
-        # try:
-        self.job_instance.on_run()
-        # except Exception as e:
-        #     logger.error(f"Job failed: JobId:{self.job_id} RunId:{self.run_id} - {str(e)}")
-        #     return e
+        try:
+            self.job_instance.on_run()
+        except Exception as e:
+            logger.exception(f"Job failed: JobId:{self.job_id} RunId:{self.run_id} - {str(e)}")
+            raise
 
     def _task_callback(self, future):
         """任务完成回调处理"""
@@ -165,4 +165,4 @@ class JobRunner:
                 threading.Thread(target=self.send_email, args=(title, logs)).start()
 
         except Exception as e:
-            logger.error(f"CRITICAL: Completion handling failed: {str(e)}")
+            logger.exception(f"CRITICAL: Completion handling failed: {str(e)}")

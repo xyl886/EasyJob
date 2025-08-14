@@ -178,7 +178,7 @@ async def execute_job_core(job_id: int):
     try:
         Core.run(job_id=job_id)
     except Exception as e:
-        logger.error(f"Job execution failed: {str(e)}")
+        logger.exception(f"Job execution failed: {str(e)}")
 
 
 if __name__ == '__main__':

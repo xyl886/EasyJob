@@ -14,7 +14,7 @@ from typing import List
 from pymongo.errors import BulkWriteError
 import pymongo.errors
 from loguru import logger
-from pymongo import MongoClient, InsertOne
+from pymongo import MongoClient, InsertOne, UpdateOne
 
 
 class DocumentList:
@@ -123,9 +123,6 @@ class CollectionWrapper:
         """
         return DocumentList(list(self.collection.aggregate(pipeline)))
 
-    # def count(self):
-    #     return int(self.collection.estimated_document_count())
-
     def count(self, query: dict = None) -> int:
         """
         根据给定的查询条件（query）从指定集合中统计文档数量。
@@ -160,7 +157,6 @@ class CollectionWrapper:
 
         return unique_list
 
-    @logger.catch(reraise= True)
     def find_documents(self,
                        query: dict = None,
                        projection: dict = None,
@@ -204,107 +200,17 @@ class CollectionWrapper:
                         f"耗时: {time.perf_counter() - start_time:.6f} 秒")
             return DocumentList(data)
         except pymongo.errors.ConnectionFailure as e:
-            logger.error(f"连接数据库失败: {e}")
+            logger.exception(f"连接数据库失败: {e}")
         except pymongo.errors.ExecutionTimeout as e:
-            logger.error(f"查询超时: {e.details['errmsg']}")
+            logger.exception(f"查询超时: {e.details['errmsg']}")
         except pymongo.errors.OperationFailure as e:
-            logger.error(f"查询数据失败: {e.details['errmsg']}")
+            logger.exception(f"查询数据失败: {e.details['errmsg']}")
         except pymongo.errors.PyMongoError as e:
-            logger.error(f"Database query failed: {str(e)}")
+            logger.exception(f"Database query failed: {str(e)}")
         except Exception as e:
-            logger.error(f"查询数据时发生未知错误: {e}")
+            logger.exception(f"查询数据时发生未知错误: {e}")
         return None
 
-    @logger.catch(reraise= True)
-    def batch_find_documents(self, query=None, projection: dict = None, batch_size: int = 1000, skip: int = 0):
-        """
-        分批查询文档，每次查询`batch_size`条数据。
-
-        参数:
-            query (dict): 查询条件，使用 MongoDB 查询语法。
-            projection (dict, optional): 返回字段投影，仅返回指定的字段。默认返回所有字段。
-            batch_size (int, optional): 每批次查询的文档数量。默认为1000。
-
-        返回:
-            Generator[List[dict]]: 生成器，逐批返回匹配查询条件的文档列表（字典形式）。
-        """
-
-        if query is None:
-            query = {}
-        while True:
-            logger.info(f'开始查询第 {skip} 条到第 {batch_size + skip} 条的数据')
-            docs_batch = self.find_documents(query=query, projection=projection, limit=batch_size, skip=skip)
-            if not docs_batch:
-                break
-            yield docs_batch
-            skip += batch_size
-
-    @logger.catch(reraise= True)
-    def stream_find_documents(self, query: dict, projection: dict = None, batch_size: int = 1000, skip: int = 0):
-        """
-        流式查询文档，逐条返回匹配查询条件的文档。
-
-        参数:
-            query (dict): 查询条件，使用 MongoDB 查询语法。
-            projection (dict, optional): 返回字段投影，仅返回指定的字段。默认返回所有字段。
-
-        返回:
-            Generator[dict]: 生成器，逐条返回匹配查询条件的文档（字典形式）。
-        """
-        if query is None:
-            query = {}
-        cursor = self.find_documents(query=query, projection=projection, limit=batch_size, skip=skip)
-        cursor.batch_size = 10000  # 或根据实际情况调整 batch_size
-        for doc in cursor:
-            yield doc
-
-    def export_data_to_excel(self,
-                             output_file: str = None,
-                             sheet_name: str = None,
-                             check_columns: bool = True,
-                             query: dict = None,
-                             projection: dict = None,
-                             limit: int = 0,
-                             skip: int = 0,
-                             distinct_key: str = None,
-                             explain: bool = False
-                             ):
-        """
-        将查询到的数据保存到Excel文件中。(废弃)
-        """
-        if output_file is None:
-            if self.db_name == '':
-                logger.error("请选择MongoDB数据库")
-                return
-            else:
-                output_file = self.db_name
-        if not output_file.endswith('.xlsx') or not output_file.endswith('.xls'):
-            output_file += '.xlsx'
-        if sheet_name is None:
-            if self.collection_name == '':
-                logger.error(f"当前库为{self.db_name} 请选择集合")
-                return
-            else:
-                sheet_name = self.collection_name
-        try:
-            infos = self.find_documents(query=query,
-                                        projection=projection,
-                                        limit=limit,
-                                        skip=skip,
-                                        distinct_key=distinct_key,
-                                        explain=explain)
-        except Exception as e:
-            logger.error(f"查询数据时发生错误: {e}")
-            return
-        if not infos:
-            logger.error("请先执行find_documents方法查询数据")
-            return
-        # save_dict_list_to_excel(infos,
-        #                         output_file=output_file,
-        #                         sheet_name=sheet_name,
-        #                         check_columns=check_columns)
-
-    @logger.catch(reraise= True)
     def update_documents(self, data_dict, query_key: str):
         """
         根据传入的字典的某个key的值进行查询，判断是否已经存在相同记录，
@@ -346,13 +252,12 @@ class CollectionWrapper:
                 logger.info(f"{collection_info} 没有找到匹配的记录, 不进行更新操作")
                 return 0  # 返回0表示没有更新任何记录
         except pymongo.errors.PyMongoError as e:
-            logger.error(f"更新数据失败: {str(e)}")
+            logger.exception(f"更新数据失败: {str(e)}")
             raise
         except Exception as e:
-            logger.error(f"更新数据时发生未知错误: {e}")
+            logger.exception(f"更新数据时发生未知错误: {e}")
             raise
 
-    @logger.catch(reraise= True)
     def save_dict_to_collection(self, data_dict: dict, query_key: str = None):
         """
         根据传入的字典的某个key的值进行查询，判断是否已经存在相同记录，
@@ -419,29 +324,55 @@ class CollectionWrapper:
                 logger.error("保存数据失败")
                 raise
         except Exception as e:
-            logger.error(f"保存数据失败: {e}")
+            logger.exception(f"保存数据失败: {e}")
             raise
 
-    def bulk_save(self, dict_list: List[dict]):
-        if not isinstance(dict_list, list):
+    def bulk_save(self, dict_list: List[dict], query_key: str = None):
+        """
+        批量保存数据到MongoDB集合
+
+        参数:
+            dict_list: 要保存的字典列表
+            query_key: 用于检查文档是否存在的键名。如果提供，则对已存在文档执行更新操作，
+                      否则全部执行插入操作
+        """
+        try:
+            dict_list = list(dict_list)
+        except TypeError:
             raise TypeError("dict_list 必须是一个列表")
+
         if len(dict_list) == 0:
             logger.warning("dict_list 为空")
             return None
+
         operations = []
+
         for data_dict in dict_list:
-            operations.append(InsertOne(data_dict))
+            if query_key is not None and query_key in data_dict:
+                # 如果提供了query_key且数据中包含该键，则创建更新操作
+                query = {query_key: data_dict[query_key]}
+                operations.append(UpdateOne(
+                    query,
+                    {"$set": data_dict},
+                    upsert=True  # 如果不存在则插入
+                ))
+            else:
+                # 否则执行插入操作
+                operations.append(InsertOne(data_dict))
+
         start_time = time.perf_counter()
         collection_info = f"{self.db_name}:{self.collection_name}"
+
         try:
             result = self.collection.bulk_write(operations, ordered=False)
             if self.log_enabled:
-                logger.info(f"{len(result.inserted_ids)} 条新数据成功保存到mongodb {collection_info}, "
+                logger.info(f"成功保存到mongodb {collection_info}: "
+                            f"插入 {result.inserted_count} 条, "
+                            f"更新 {result.modified_count} 条, "
                             f"耗时: {time.perf_counter() - start_time:.6f} 秒")
-                return None
             return None
         except BulkWriteError as bwe:
-            logger.error(f"部分文档插入失败: {len(bwe.details['writeErrors'])} 个错误")
+            logger.exception(f"部分操作失败: {len(bwe.details['writeErrors'])} 个错误")
             return None
 
     def save_dict_list_to_collection(self, dict_list: List[dict], query_key: str = None):
@@ -496,10 +427,11 @@ class CollectionWrapper:
                         self.save_dict_to_collection(data, query_key)
                 return new_result.inserted_ids if new_data else []  # 返回新数据的插入ID列表
         except pymongo.errors.BulkWriteError as e:
-            logger.error(f"Failed to save data: {str(e.details)}")
+            logger.exception(f"Failed to save data: {str(e.details)}")
             raise
-        # except Exception as e:
-        #     logger.error(f"保存数据失败: {e}")
+        except Exception as e:
+            logger.exception(f"保存数据失败: {e}")
+            raise
 
     def md5_encrypt(self, text):
         text = str(text)
@@ -569,7 +501,7 @@ class CollectionWrapper:
 
             return result.deleted_count
         except Exception as e:
-            logger.error(f"删除文档时出错：{str(e)}")
+            logger.exception(f"删除文档时出错：{str(e)}")
             raise
 
 
@@ -624,7 +556,7 @@ class MongoDB:
             if self.log_enabled:
                 logger.info(f"成功连接到集合 {self.db_name}:{collection_name}, 当前文档数: {collection_stats}")
         except Exception as e:
-            logger.error(f"无法连接到集合 {self.db_name}:{collection_name}: {e}")
+            logger.exception(f"无法连接到集合 {self.db_name}:{collection_name}: {e}")
             raise
         return CollectionWrapper(self.db_name, self.db[collection_name], log_enabled=self.log_enabled)
 
@@ -659,7 +591,7 @@ class MongoDB:
             if self.client:
                 self.client.close()
         except Exception as e:
-            logger.error(f"关闭MongoDB连接时发生错误: {e}")
+            logger.exception(f"关闭MongoDB连接时发生错误: {e}")
             raise
         logger.info("MongoDB 连接已关闭")
 
