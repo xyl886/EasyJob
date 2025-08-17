@@ -5,16 +5,17 @@
 @file: MongoDB.py
 @time: 2025/06/15
 """
+import copy
 import hashlib
 import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import List, Optional
 from pymongo.errors import BulkWriteError
 import pymongo.errors
 from loguru import logger
-from pymongo import MongoClient, InsertOne, UpdateOne
+from pymongo import MongoClient, InsertOne, UpdateOne, ASCENDING, DESCENDING
 
 
 class DocumentList:
@@ -103,19 +104,13 @@ class CollectionWrapper:
         """
         return getattr(self.collection, key)
 
-    def index_information(self, index_name=None):
+    def _index(self, index_name=None):
         if index_name:
             return self.collection.index_information(index_name)
         else:
             return self.collection.index_information()
 
-    def create_index(self, index, unique=True):
-        """
-        创建索引
-        """
-        self.collection.create_index(index, unique=unique)
-
-    def aggregate(self, pipeline):
+    def _aggregate(self, pipeline):
         """
         聚合查询
         :param pipeline: a list of aggregation pipeline stages
@@ -123,7 +118,7 @@ class CollectionWrapper:
         """
         return DocumentList(list(self.collection.aggregate(pipeline)))
 
-    def count(self, query: dict = None) -> int:
+    def _count(self, query: dict = None) -> int:
         """
         根据给定的查询条件（query）从指定集合中统计文档数量。
 
@@ -183,13 +178,10 @@ class CollectionWrapper:
         try:
             if distinct_key is not None:
                 with self.rlock:
-                    self.collection.create_index(distinct_key)
+                    self.collection.create_index([(distinct_key, ASCENDING)])
                     distinct_values = self.collection.distinct(distinct_key, filter=query)
                     cursor = self.collection.find(query, projection=projection, limit=limit, skip=skip, sort=sort)
                     data = [doc for doc in cursor if doc[distinct_key] in distinct_values]
-                    # # 直接使用 distinct 方法
-                    # distinct_values = self.collection.distinct(distinct_key, query)
-                    # data = [{distinct_key: value} for value in distinct_values]
                     data = self.remove_duplicates(data, distinct_key)
             else:
                 with self.rlock:
@@ -275,6 +267,7 @@ class CollectionWrapper:
         if data_dict == {}:
             logger.warning("传入的data_dict为空字典")
             return None
+        data_dict = copy.deepcopy(data_dict)  # 防止修改外部字典
         collection_info = f"{self.db_name}:{self.collection_name}"
         result = None
         _id = 0
@@ -610,27 +603,9 @@ if __name__ == "__main__":
         'age': 20,
         'email': 'zhangsan@qq.com'
     }
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        for i in range(10):
-            executor.submit(chapter_list.save_dict_to_collection, info, query_key='name')
-    # 保存数据字典
-    info = [
-        {
-            'name': '张三',
-            'age': 20,
-            'email': 'zhangsan@example.com'
-        },
-        {
-            'name': '李四',
-            'age': 25,
-            'email': 'lisi@example.com'
-        }
-    ]
-    chapter_list.save_dict_list_to_collection(dict_list=info)
+    # with ThreadPoolExecutor(max_workers=10) as executor:
+    #     for i in range(10):
+    #         executor.submit(chapter_list.save_dict_to_collection, info)
     # 查询集合所有数据
-    chapter_list.find_documents()
-    chapter_list.delete_documents()
-    # 查询数据示例
-    query = {"name": "John"}
-    documents = chapter_list.find_documents(query=query)
-    print(documents)
+    for chapter in chapter_list.find_documents():
+        print(chapter)

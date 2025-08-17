@@ -13,20 +13,18 @@ import os
 import random
 import sys
 import time
-from concurrent.futures import as_completed
-from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import ContextDecorator
 from functools import wraps
 from typing import Union, Tuple, Callable, Optional, Dict, List
 
 import requests
 import tls_client
-from DrissionPage import ChromiumPage
 from loguru import logger
 from pandas import DataFrame
 from requests import RequestException, ReadTimeout, ConnectTimeout
 from requests.models import HTTPError
 
+from Core.ConcurrentExecutor import ConcurrentExecutor
 from Core.Config import content_type_ext
 from Core.EntityBase import EntityBase
 from Core.MongoDB import MongoDB
@@ -175,7 +173,7 @@ class JobBaseMeta(type):
         return super().__new__(cls, name, bases, attrs)
 
 
-class JobBase(metaclass=JobBaseMeta):
+class JobBase(metaclass=JobBaseMeta, ConcurrentExecutor):
     """任务基类"""
     _registry = {}
 
@@ -601,55 +599,11 @@ class JobBase(metaclass=JobBaseMeta):
             data = [{'name': 'Alice', 'age': 30}, {'name': 'Bob', 'age': 25}]
             save_to_csv(data, 'output.csv', sep='|', encoding='gbk')
         """
-        # 确定日期目录,如果没有传入参数date，则尝试获取子类初始化的date
         target_date = date or self.date
-        if not target_date:
-            raise ValueError("Date must be provided or set in instance")
+        missing = [name for name, val in (("folder", self.folder), ("date", target_date)) if not val]
+        if missing:
+            raise ValueError(f"Missing required argument(s): {', '.join(missing)}")
         # 构建完整文件路径
         save_dir = os.path.join(self.folder, target_date)
         save_path = os.path.join(save_dir, file_name)
         DataFrame(data_list).to_csv(save_path, index=False, encoding='utf-8')
-
-    def ThreadRun(self, _fun, run_list, chunk_size=16, *args, **kwargs):
-        """
-         使用线程池并发执行任务
-         该函数创建一个线程池，将任务列表中的每个元素分配给不同的线程执行。
-         支持传递自定义参数给任务函数，并自动管理线程池的生命周期。
-         :param _fun: 要执行的任务函数，第一个参数必须接收run_list中的元素
-         :param run_list: 任务数据列表，每个元素将作为参数传递给任务函数，必须接受 run_info
-         :param chunk_size: 线程池最大工作线程数，默认16
-         """
-        run_list = list(run_list)
-        with ThreadPoolExecutor(max_workers=chunk_size) as executor:
-            for run_info in run_list:
-                executor.submit(_fun, run_info, *args, **kwargs)
-
-    def MultiTabs(self, _fun, tab_list, chunk_size=10, *args, **kwargs):
-        """
-        通用的 DrissionPage 多标签页并发处理函数
-        :param _fun: 处理单个任务的函数，必须接受两个参数：tab(ChromiumTab) 和 tab_info
-        :param tab_list: 待处理的任务列表（每个元素会传递给_fun）
-        :param chunk_size: 每组并发任务数（默认10）
-        """
-        tab_list = list(tab_list)
-        grouped = [
-            tab_list[i:i + chunk_size]
-            for i in range(0, len(tab_list), chunk_size)
-        ]
-        for group in grouped:
-            self.page = ChromiumPage()
-            tabs = []
-            futures = []
-            for index, detail in enumerate(group):
-                tab = self.page.new_tab() if index > 0 else self.page.get_tab(0)
-                tabs.append(tab)
-            with ThreadPoolExecutor(max_workers=chunk_size) as executor:
-                for tab, tab_info in zip(tabs, group):
-                    future = executor.submit(_fun, tab, tab_info, *args, **kwargs)
-                    futures.append(future)
-            for future in as_completed(futures):
-                try:
-                    future.result()  # 获取结果（会抛出异常）
-                except Exception as e:
-                    print(f"Task failed: {e}")
-            self.page.close_tabs(tabs)
